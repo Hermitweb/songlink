@@ -1,0 +1,349 @@
+using System.Collections.Concurrent;
+using System.Net.WebSockets;
+using System.Threading.Channels;
+using System.Net;
+using System.Text;
+using SongLink.Protocol;
+
+namespace SongLink.Host;
+
+/// <summary>
+/// M1 Host 中枢（架构 §6.3/§6.6）：HttpListener WebSocket 服务器 + 帧分发。
+/// 每连接一个有序出箱 Channel + 单一发送循环（#7 保证 FIFO、且永不并发 SendAsync）；
+/// 广播前 Clone NowPlaying（#8 不改共享实例）。纯托管、可在本机跑（FakeAdapter 时无需 WinRT/声卡）。
+/// </summary>
+public sealed class HostServer : IAsyncDisposable
+{
+    private readonly HttpListener _listener = new();
+    private readonly MediaBus _bus;
+    private readonly IPlayerAdapter _adapter;
+    private readonly LyricService _lyric = new();
+    private readonly ArtStore _art = new();
+    private readonly AuthManager _auth;
+    private readonly ReplayBuffer _replay = new();
+    private readonly object _pubLock = new();
+    private readonly ConcurrentDictionary<int, ClientConn> _clients = new();
+    private readonly CancellationTokenSource _cts = new();
+    private Task? _acceptLoop;
+    private long _seq;
+    private string _lastTrackKey = "";
+
+    public string Pin => _auth.Pin;
+
+    private sealed class ClientConn
+    {
+        public required WebSocket Socket { get; init; }
+        public required Channel<Frame> Outbox { get; init; }
+        public Task? SendTask { get; set; }
+        public List<string> Caps { get; } = new();
+        public bool Authed { get; set; }
+        public string? Token { get; set; }
+    }
+
+    public HostServer(IPlayerAdapter adapter, int port, string? pin = null)
+    {
+        _adapter = adapter;
+        _auth = new AuthManager(pin);
+        _bus = new MediaBus(adapter);
+        _bus.Changed += OnStateChanged;
+    }
+
+    public int Port { get; private set; }
+
+    public void Start(int port)
+    {
+        Port = port;
+        // #1：优先绑定通配(手机等局域网设备可连)；无权限则回落 localhost。
+        bool lan = false;
+        try
+        {
+            _listener.Prefixes.Add($"http://+:{port}/");
+            _listener.Start();
+            lan = true;
+        }
+        catch (HttpListenerException)
+        {
+            _listener.Prefixes.Clear();
+            _listener.Prefixes.Add($"http://localhost:{port}/");
+            _listener.Start();
+        }
+        _bus.Start();
+        _acceptLoop = Task.Run(AcceptLoopAsync);
+        if (lan)
+            Console.WriteLine($"[host] 监听 ws://0.0.0.0:{port}/（局域网可连）  PIN={_auth.Pin}  适配器={_adapter.AppId} caps={_adapter.Caps}");
+        else
+            Console.WriteLine($"[warn] 仅绑定 localhost（手机连不上）。放行局域网：以管理员运行，或执行 " +
+                              $"netsh http add urlacl url=http://+:{port}/ user={{登录用户}}  后重启。  PIN={_auth.Pin}");
+    }
+
+    private async Task AcceptLoopAsync()
+    {
+        while (!_cts.IsCancellationRequested)
+        {
+            HttpListenerContext ctx;
+            try { ctx = await _listener.GetContextAsync(); }
+            catch when (_cts.IsCancellationRequested) { break; }
+            catch (HttpListenerException) { break; }
+
+            if (!ctx.Request.IsWebSocketRequest)
+            {
+                ServeArt(ctx);
+                continue;
+            }
+
+            _ = Task.Run(() => HandleClientAsync(ctx));
+        }
+    }
+
+    /// <summary>GET /art/{ref} → 从 ArtStore 取图下发；非法/不存在分别 400/404。</summary>
+    private void ServeArt(HttpListenerContext ctx)
+    {
+        var path = ctx.Request.Url?.AbsolutePath ?? "";
+        const string prefix = "/art/";
+        if (ctx.Request.HttpMethod == "GET" && path.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            var refId = Uri.UnescapeDataString(path[prefix.Length..]);
+            var got = _art.Get(refId);
+            if (got is not null)
+            {
+                var bytes = got.Value.Bytes;
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = got.Value.Mime;
+                ctx.Response.ContentLength64 = bytes.Length;
+                ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+            }
+            else ctx.Response.StatusCode = 404;
+        }
+        else ctx.Response.StatusCode = 400;
+        ctx.Response.Close();
+    }
+
+    private async Task HandleClientAsync(HttpListenerContext ctx)
+    {
+        WebSocketContext wsCtx;
+        try { wsCtx = await ctx.AcceptWebSocketAsync(subProtocol: null); }
+        catch (Exception ex) { Console.WriteLine($"[host] 握手失败：{ex.Message}"); return; }
+
+        var conn = new ClientConn
+        {
+            Socket = wsCtx.WebSocket,
+            Outbox = Channel.CreateUnbounded<Frame>(new UnboundedChannelOptions { SingleReader = true, SingleWriter = false })
+        };
+        int id = conn.Socket.GetHashCode();
+        _clients[id] = conn;
+        conn.SendTask = Task.Run(() => SendLoopAsync(conn));   // #7：单发送循环，FIFO
+        Console.WriteLine($"[host] 客户端接入 #{id}（在线 {_clients.Count}）");
+
+        try
+        {
+            // 等待客户端先发 Hello 完成鉴权；鉴权成功后再回 host hello + 当前 state（见 DispatchAsync）
+            var buf = new byte[8192];
+            while (conn.Socket.State == WebSocketState.Open && !_cts.IsCancellationRequested)
+            {
+                var sb = new StringBuilder();
+                WebSocketReceiveResult r;
+                do
+                {
+                    r = await conn.Socket.ReceiveAsync(buf, _cts.Token);
+                    if (r.MessageType == WebSocketMessageType.Close) break;
+                    sb.Append(Encoding.UTF8.GetString(buf, 0, r.Count));
+                } while (!r.EndOfMessage);
+                if (r.MessageType == WebSocketMessageType.Close) break;
+
+                var frame = FrameCodec.Parse(sb.ToString());
+                if (frame is null) { SendTo(conn, new ErrorFrame { Code = "BAD_PROTO" }); continue; }
+                await DispatchAsync(conn, frame);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (WebSocketException) { }
+        finally
+        {
+            _clients.TryRemove(id, out _);
+            conn.Outbox.Writer.TryComplete();
+            try { if (conn.SendTask is not null) await conn.SendTask; } catch { }
+            Console.WriteLine($"[host] 客户端断开 #{id}（在线 {_clients.Count}）");
+        }
+    }
+
+    private async Task DispatchAsync(ClientConn conn, Frame frame)
+    {
+        // #6 鉴权门：未鉴权只允许 Hello
+        if (!conn.Authed && frame is not Hello)
+        {
+            SendTo(conn, new ErrorFrame { Ref = frame.Id, Code = "AUTH_FAILED" });
+            return;
+        }
+
+        switch (frame)
+        {
+            case Hello h:
+                bool authOk = _auth.ValidatePin(h.Pin) || _auth.ValidateToken(h.Token);
+                if (authOk)
+                {
+                    conn.Authed = true;
+                    conn.Caps.Clear(); conn.Caps.AddRange(h.Caps);
+                    conn.Token = _auth.IssueToken(h.Device ?? "unknown");
+                    SendTo(conn, new AuthResult { Ref = h.Id ?? "", Ok = true, Token = conn.Token });
+                    SendTo(conn, new Hello { Role = "host", Device = Environment.MachineName, Os = "Windows" });
+                    if (h.LastSeq is > 0) ReplaySince(conn, h.LastSeq.Value);   // §7 断线补发
+                    else if (_bus.Current is not null) SendTo(conn, new State { Now = _bus.Current.Clone() });
+                }
+                else
+                {
+                    SendTo(conn, new AuthResult { Ref = h.Id ?? "", Ok = false, Code = "AUTH_FAILED" });
+                }
+                break;
+
+            case Ping p:
+                if (_bus.Current is not null) SendTo(conn, new State { Now = _bus.Current.Clone() });
+                break;
+
+            case SrcMeta sm:
+                _bus.SetPhoneNowPlaying(new NowPlaying
+                {
+                    Title = sm.Title, Artist = sm.Artist, Pos = sm.Pos, Dur = sm.Dur,
+                    Status = sm.Status, ArtRef = sm.ArtRef
+                });
+                break;
+
+            case Cmd c when c.Action == "setSourceMode":
+                var mode = c.Args?["mode"]?.GetValue<string>() ?? "PC_LOCAL";
+                _bus.SetMode(mode);   // #12：进 PHONE_STREAM 时 MediaBus 冻结 PC 出声
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                Broadcast(new EventFrame { Name = "source-mode-changed", Mode = _bus.SourceMode });
+                break;
+
+            case Cmd c when c.Action == "search":
+                var kw = c.Args?["kw"]?.GetValue<string>() ?? "";
+                if ((_adapter.Caps & AdapterCapability.Search) == 0)
+                {
+                    SendTo(conn, new ErrorFrame { Ref = c.Id, Code = "SEARCH_UNAVAILABLE" });
+                }
+                else
+                {
+                    var hits = await _adapter.Search(kw, _cts.Token);
+                    SendTo(conn, new SearchResults { Ref = c.Id ?? "", Query = kw, Results = hits.ToList() });
+                }
+                break;
+
+            case Cmd c when c.Action == "calibrate":
+                int offMs = 0;
+                try { offMs = c.Args?["lyricOffsetMs"]?.GetValue<int>() ?? 0; } catch { offMs = 0; }
+                var cTitle = SafeStr(c.Args?["title"]);
+                var cArtist = SafeStr(c.Args?["artist"]);
+                _lyric.SetOffset(cTitle, cArtist, offMs);   // #11：title 空 → 全局偏移
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                if (_bus.Current is not null)
+                {
+                    var ly = _lyric.TryGet(_bus.Current.Title, _bus.Current.Artist);
+                    if (ly is not null) Broadcast(ly);       // 用新偏移立即重发，客户端即时见效
+                }
+                break;
+
+            case Cmd c:
+                bool ok = c.Action switch
+                {
+                    "play" => await _adapter.Play(_cts.Token),
+                    "pause" => await _adapter.Pause(_cts.Token),
+                    "toggle" => (_bus.Current?.Status == "playing") ? await _adapter.Pause(_cts.Token) : await _adapter.Play(_cts.Token),
+                    "stop" => await _adapter.Stop(_cts.Token),
+                    "next" => await _adapter.Next(_cts.Token),
+                    "prev" => await _adapter.Prev(_cts.Token),
+                    "pick" => (_adapter.Caps & AdapterCapability.Pick) != 0
+                                && await _adapter.Pick(c.Args?["title"]?.GetValue<string>() ?? "", c.Args?["artist"]?.GetValue<string>() ?? "", _cts.Token),
+                    _ => false
+                };
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = ok });
+                if (!ok && c.Action == "pick")
+                    SendTo(conn, new ErrorFrame { Ref = c.Id, Code = (_adapter.Caps & AdapterCapability.Pick) == 0 ? "PICK_UNSUPPORTED" : "APP_NOT_FOUND" });
+                break;
+        }
+    }
+
+    private void OnStateChanged(NowPlaying np)
+    {
+        // np 已是 MediaBus 产出的快照（含正确 SourceMode）
+        BroadcastState(np);
+
+        // 换曲才下发歌词（省流量，蓝牙也能带文本歌词）
+        var key = $"{np.Title}|{np.Artist}";
+        if (key != _lastTrackKey && !string.IsNullOrWhiteSpace(np.Title))
+        {
+            _lastTrackKey = key;
+            var ly = _lyric.TryGet(np.Title, np.Artist);
+            if (ly is not null) Broadcast(ly);
+        }
+    }
+
+    private void BroadcastState(NowPlaying np)
+    {
+        lock (_pubLock)
+        {
+            var f = new State { Now = np.Clone(), Seq = Next() };
+            _replay.Add(f);
+            foreach (var c in _clients.Values.Where(c => c.Authed)) c.Outbox.Writer.TryWrite(f);
+        }
+    }
+
+    private void Broadcast(Frame frame)
+    {
+        lock (_pubLock)
+        {
+            frame.Seq = Next();
+            _replay.Add(frame);
+            foreach (var c in _clients.Values.Where(c => c.Authed)) c.Outbox.Writer.TryWrite(frame);
+        }
+    }
+
+    /// <summary>点对点帧（ack/error/authResult/searchResults/hello）：锁内赋 seq，不入重放缓冲。</summary>
+    private void SendTo(ClientConn conn, Frame frame)
+    {
+        lock (_pubLock) { frame.Seq = Next(); conn.Outbox.Writer.TryWrite(frame); }
+    }
+
+    /// <summary>§7 断线补发：把 seq &gt; lastSeq 的缓冲广播按原 seq 补发给该连接。</summary>
+    private void ReplaySince(ClientConn conn, long lastSeq)
+    {
+        lock (_pubLock)
+            foreach (var f in _replay.Since(lastSeq)) conn.Outbox.Writer.TryWrite(f);
+    }
+
+    private long Next() => Interlocked.Increment(ref _seq);
+
+    private static string? SafeStr(System.Text.Json.Nodes.JsonNode? node)
+    {
+        try { return node?.GetValue<string>(); } catch { return null; }
+    }
+
+    /// <summary>每连接唯一的发送循环：串行、按序把出箱帧写到 socket（seq 已在入队时于锁内赋好）。</summary>
+    private async Task SendLoopAsync(ClientConn conn)
+    {
+        try
+        {
+            await foreach (var frame in conn.Outbox.Reader.ReadAllAsync(_cts.Token))
+            {
+                if (conn.Socket.State != WebSocketState.Open) break;
+                var bytes = Encoding.UTF8.GetBytes(FrameCodec.Serialize(frame));
+                await conn.Socket.SendAsync(bytes, WebSocketMessageType.Text, true, _cts.Token);
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (WebSocketException) { }
+        catch { /* 发送异常：断开由接收循环清理 */ }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        _cts.Cancel();
+        foreach (var conn in _clients.Values) conn.Outbox.Writer.TryComplete();
+        foreach (var conn in _clients.Values)
+        {
+            try { if (conn.Socket.State == WebSocketState.Open) await conn.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); }
+            catch { }
+        }
+        _listener.Stop();
+        if (_acceptLoop is not null) { try { await _acceptLoop; } catch { } }
+        await _bus.DisposeAsync();
+    }
+}

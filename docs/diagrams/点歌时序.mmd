@@ -1,0 +1,20 @@
+%% SongLink · 手机点歌端到端时序
+sequenceDiagram
+  autonumber
+  participant Rmt as 手机 Remote
+  participant Host as PC Host
+  participant Ad as 音乐 App 适配器
+  participant App as 目标 App
+  participant SMTC as SMTC(真值源)
+  participant Lyr as LyricService
+
+  Rmt->>Host: {cmd:pick, "晴天"}
+  Host->>Ad: PlayByQuery(晴天, 周杰伦)
+  Ad->>App: 搜索框输入 / 回车 / 点结果(UIA·OCR·私有)
+  App-->>SMTC: 开始播放，session 切换
+  SMTC-->>Host: CurrentChanged + PlaybackPosition
+  Host-->>Rmt: ack(c-17, ok) + state{晴天, pos}
+  Host->>Lyr: 用 title+artist 匹配/拉取 LRC
+  Lyr-->>Host: 歌词时间轴
+  Host-->>Rmt: lyric[]（整首一次下发）
+  Note over Rmt: 本地按 pos 平滑滚词 + 封面显示

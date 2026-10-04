@@ -1,0 +1,45 @@
+%% SongLink 点歌台 · 总体分层架构
+flowchart TB
+  subgraph R["安卓遥控端 · SongLink Remote"]
+    R1["点歌 UI<br/>搜索·榜单·队列"]
+    R2["副屏显示<br/>封面·滚动歌词"]
+    R3["控制面板<br/>播放·上下曲·音量"]
+    R4["音频采集<br/>AudioPlaybackCapture·Opus"]
+    R5["配对 / 连接管理"]
+  end
+
+  subgraph T["互联通道（双通道，能力协商）"]
+    W["局域网 WebSocket（主）<br/>控制·状态·歌词·封面·音频流"]
+    B["蓝牙 RFCOMM/BLE（辅）<br/>配对引导·指令兜底"]
+  end
+
+  subgraph H["Windows 主机 · SongLink Host"]
+    C["Connectivity<br/>WS Server·BT Server·mDNS·鉴权"]
+    BUS["Media Bus（核心）<br/>NowPlaying/Queue/Transport/LyricLine<br/>时间轴同步 · Source Mode 仲裁"]
+    LYR["LyricService<br/>拉取·缓存·KRC 解密·同步"]
+    subgraph AD["音乐 App 适配层（可插拔）"]
+      A1["SMTC Generic<br/>读元数据 + 传输控制"]
+      A2["QQ 适配器<br/>UIA/截图OCR/私有"]
+      A3["网易云·酷狗 适配器"]
+      A4["Local Source Player<br/>自注册 SMTC（导入音源）"]
+      A5["AudioStream<br/>Opus→WASAPI 渲染"]
+    end
+  end
+
+  APP["被控原生 App（真正出声方）<br/>QQ音乐·网易云·酷狗·Spotify·Apple Music"]
+  OUT["PC 默认输出设备<br/>蓝牙 A2DP / 有线 → 客厅·功放"]
+  LRC["歌词源<br/>本地 LRC/KRC · 联网"]
+
+  R --- T
+  T <--> C
+  C <--> BUS
+  BUS <--> AD
+  LYR <--> BUS
+  LRC --> LYR
+  A1 -.读元数据/上下曲/暂停.-> APP
+  A2 -.驱动搜索并点歌.-> APP
+  A3 -.驱动搜索并点歌.-> APP
+  APP ==SMTC session==> A1
+  APP -->|系统音频| OUT
+  A5 -->|手机音频流| OUT
+  R4 -.手机音频流 UDP/WS.-> A5

@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SongLink.Host</AssemblyName>
+    <RootNamespace>SongLink.Host</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="lyrics\*.lrc" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="art\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="art\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

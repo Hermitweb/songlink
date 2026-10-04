@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SongLink.Host.Adapters.Smtc</AssemblyName>
+    <RootNamespace>SongLink.Host.Adapters.Smtc</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;CS8602</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+  </ItemGroup>
+
+  <!--
+    ⚠ 需要构建机装有 Windows SDK 投影 pack（Visual Studio「Windows 应用程序开发」工作负载 / Windows App SDK）。
+    本机精简 .NET SDK 缺该 pack，无法在此编译；在标准开发机上 dotnet build 即可通过。
+    见 spike/smtc-probe/README.md 的“环境准备”。
+  -->
+
+</Project>

@@ -1,0 +1,26 @@
+# .NET 构建产物
+bin/
+obj/
+[Dd]ebug/
+[Rr]elease/
+*.user
+*.suo
+.vs/
+
+# 测试与覆盖率
+TestResults/
+*.trx
+*.coverage
+coverage/
+
+# 音频 spike 输出
+spike/audio-stream/pc/art/
+
+# IDE / OS
+.idea/
+*.swp
+Thumbs.db
+.DS_Store
+
+# 临时
+*.tmp

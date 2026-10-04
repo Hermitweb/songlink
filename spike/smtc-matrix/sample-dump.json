@@ -1,0 +1,10 @@
+{
+  "capturedAt": "2026-10-04T00:50:00+08:00",
+  "os": "Windows 11 26200",
+  "sessions": [
+    { "source": "QQMusic.Tencent.QQMusic_8rz2hqm326jze!App", "title": "晴天", "artist": "周杰伦", "album": "叶惠美", "hasThumbnail": true, "status": "Playing", "positionSec": 12.3, "positionAdvancing": true },
+    { "source": "Netease.CloudMusic_7xy2345!App", "title": "稻香", "artist": "周杰伦", "album": "", "hasThumbnail": true, "status": "Playing", "positionSec": 45.0, "positionAdvancing": true },
+    { "source": "Kugou.KugouMusic!App", "title": "", "artist": "", "album": "", "hasThumbnail": false, "status": "Paused", "positionSec": 0.0, "positionAdvancing": false },
+    { "source": "SpotifyAB.SpotifyMusic_zpdnekdrzrea0!Spotify", "title": "Yellow", "artist": "Coldplay", "album": "Parachutes", "hasThumbnail": true, "status": "Playing", "positionSec": 88.1, "positionAdvancing": true }
+  ]
+}

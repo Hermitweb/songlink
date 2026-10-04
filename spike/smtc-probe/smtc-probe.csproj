@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!--
+      标准写法：带 WinRT 版本号的 TFM 会触发 SDK 自动引用 Windows SDK 投影 pack
+      (Microsoft.Windows.SDK.NET.Ref)，从而暴露 Windows.Media.Control.* 等 WinRT 类型。
+      ⚠️ 需要构建机上装了 .NET for Windows 桌面组件（Visual Studio「Windows 应用程序开发」
+         工作负载 / Windows App SDK），或本机 dotnet/packs 下已存在该投影 pack。
+         本仓库开发用机若像某些精简 SDK 一样缺该 pack，编译会报找不到 Windows.Media.* 类型 ——
+         见同目录 README.md 的环境准备。
+    -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>smtc-probe</AssemblyName>
+    <RootNamespace>SongLink.Spikes.SmtcProbe</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;CS8602;NU1701</NoWarn>
+  </PropertyGroup>
+
+</Project>

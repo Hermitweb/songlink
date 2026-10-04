@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://songlink.dev/schema/songlink-frame.schema.json",
+  "title": "SongLink Frame",
+  "description": "SongLink 点歌台 Remote<->Host 通信帧信封 + 按 type 分支的载荷校验",
+  "type": "object",
+  "required": ["v", "type", "seq"],
+  "properties": {
+    "v": { "type": "integer", "const": 1, "description": "协议主版本" },
+    "type": {
+      "type": "string",
+      "enum": ["hello","cmd","ack","state","lyric","event","art","srcMeta","audio:start","audio:stop","error","ping","pong","authResult","searchResults"]
+    },
+    "seq": { "type": "integer", "minimum": 0 },
+    "id": { "type": "string" },
+    "ts": { "type": "number" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "type": { "const": "hello" } }, "required": ["type"] },
+      "then": {
+        "required": ["role"],
+        "properties": {
+          "role": { "enum": ["remote","host"] },
+          "device": { "type": "string" },
+          "os": { "type": "string" },
+          "pin": { "type": "string" },
+          "token": { "type": "string" },
+          "lastSeq": { "type": "integer", "minimum": 0 },
+          "caps": { "type": "array", "items": { "enum": ["cmd","state","lyric","art","audio"] } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "cmd" } }, "required": ["type"] },
+      "then": {
+        "required": ["id","action"],
+        "properties": {
+          "action": {
+            "enum": ["play","pause","toggle","stop","next","prev","volume","search","pick","queue.add","queue.remove","queue.top","queue.clear","import","setSourceMode","calibrate"]
+          },
+          "args": { "type": "object" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "ack" } }, "required": ["type"] },
+      "then": { "required": ["ref","ok"], "properties": { "ref": { "type": "string" }, "ok": { "type": "boolean" } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "state" } }, "required": ["type"] },
+      "then": {
+        "required": ["now"],
+        "properties": {
+          "now": {
+            "type": "object",
+            "required": ["status"],
+            "properties": {
+              "title": { "type": "string" },
+              "artist": { "type": "string" },
+              "album": { "type": "string" },
+              "pos": { "type": "number", "minimum": 0 },
+              "dur": { "type": "number", "minimum": 0 },
+              "status": { "enum": ["playing","paused","stopped","buffering"] },
+              "artRef": { "type": "string" },
+              "sourceMode": { "enum": ["PC_LOCAL","PHONE_STREAM"] }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "lyric" } }, "required": ["type"] },
+      "then": {
+        "required": ["trackId","lines"],
+        "properties": {
+          "trackId": { "type": "string" },
+          "offsetMs": { "type": "integer" },
+          "lines": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["t","x"],
+              "properties": { "t": { "type": "number", "minimum": 0 }, "x": { "type": "string" } }
+            }
+          }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "event" } }, "required": ["type"] },
+      "then": {
+        "required": ["name"],
+        "properties": {
+          "name": { "enum": ["queue-updated","source-mode-changed","device-connected","device-disconnected"] },
+          "mode": { "enum": ["PC_LOCAL","PHONE_STREAM"] },
+          "queue": { "type": "array", "items": { "type": "object" } }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "art" } }, "required": ["type"] },
+      "then": { "required": ["ref"], "properties": { "ref": { "type": "string" }, "mime": { "type": "string" }, "size": { "type": "integer", "minimum": 0 } } }
+    },
+    {
+      "if": { "properties": { "type": { "const": "srcMeta" } }, "required": ["type"] },
+      "then": {
+        "required": ["title","artist","pos","status"],
+        "properties": {
+          "title": { "type": "string" }, "artist": { "type": "string" },
+          "pos": { "type": "number" }, "dur": { "type": "number" },
+          "status": { "enum": ["playing","paused","stopped","buffering"] }, "artRef": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "audio:start" } }, "required": ["type"] },
+      "then": {
+        "required": ["codec","rate","ch","frameMs"],
+        "properties": {
+          "codec": { "const": "opus" },
+          "rate": { "type": "integer", "enum": [16000,24000,48000] },
+          "ch": { "type": "integer", "enum": [1,2] },
+          "frameMs": { "type": "integer", "enum": [10,20,40,60] },
+          "port": { "type": "integer", "minimum": 1, "maximum": 65535 }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "error" } }, "required": ["type"] },
+      "then": {
+        "required": ["code"],
+        "properties": {
+          "ref": { "type": "string" },
+          "hint": { "type": "string" },
+          "code": { "enum": ["PICK_UNSUPPORTED","APP_NOT_FOUND","SEARCH_UNAVAILABLE","LYRIC_NOT_FOUND","ART_UNAVAILABLE","CAP_DENIED","MODE_CONFLICT","DRM_CAPTURE_BLOCKED","AUTH_FAILED","BAD_PROTO","RATE_LIMITED"] }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "authResult" } }, "required": ["type"] },
+      "then": {
+        "required": ["ref","ok"],
+        "properties": {
+          "ref": { "type": "string" },
+          "ok": { "type": "boolean" },
+          "token": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      }
+    },
+    {
+      "if": { "properties": { "type": { "const": "searchResults" } }, "required": ["type"] },
+      "then": {
+        "required": ["ref","query","results"],
+        "properties": {
+          "ref": { "type": "string" },
+          "query": { "type": "string" },
+          "results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["title","artist"],
+              "properties": {
+                "title": { "type": "string" },
+                "artist": { "type": "string" },
+                "album": { "type": "string" },
+                "dur": { "type": "number" }
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
+}

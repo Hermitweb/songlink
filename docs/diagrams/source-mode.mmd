@@ -1,0 +1,14 @@
+%% SongLink · Source Mode 音源模式状态机
+stateDiagram-v2
+  [*] --> PC_LOCAL
+  PC_LOCAL: PC_LOCAL（被控App/本地在PC出声）
+  PHONE_STREAM: PHONE_STREAM（渲染手机音频流）
+
+  PC_LOCAL --> PHONE_STREAM: setSourceMode(PHONE_STREAM) 且抓到流
+  PHONE_STREAM --> PC_LOCAL: 停止串流 / 超时(3s)
+  PHONE_STREAM --> PC_LOCAL: 手机侧崩溃 → 自动回落并告警
+
+  note right of PHONE_STREAM
+    进入时 Host 对 PC 侧播放发 Pause 并挂起适配器
+    避免“两个出声源打架”
+  end note

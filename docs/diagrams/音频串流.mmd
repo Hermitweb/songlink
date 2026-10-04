@@ -1,0 +1,29 @@
+%% SongLink · 手机音频串流到电脑（含蓝牙）输出
+flowchart LR
+  subgraph P["手机侧"]
+    A["任意 App 播放"]
+    B["内置播放器（路径B·最稳）"]
+    CAP["AudioPlaybackCapture<br/>（Android 10+）"]
+    ENC["Opus 编码<br/>48kHz/立体声/128-256kbps"]
+    META["读本机媒体会话<br/>title·artist·pos·封面·LRC"]
+    A --> CAP
+    B --> CAP
+    CAP --> ENC
+  end
+
+  ENC ==>|"局域网 UDP/WS（音频）"| DEC
+  META -->|"srcMeta / lyric / art 帧"| BUS
+
+  subgraph PC["Windows 主机侧"]
+    DEC["AudioStream<br/>抖动缓冲 · Opus 解码 · 重采样"]
+    BUS["Media Bus<br/>Source Mode = PHONE_STREAM"]
+    WASAPI["WASAPI 渲染"]
+    DEC --> WASAPI
+    DEC -.解码后送.-> BUS
+  end
+
+  WASAPI --> OUT["PC 默认输出设备"]
+  OUT --> SPK["蓝牙 A2DP / 有线<br/>客厅·功放·蓝牙音箱"]
+  BUS --> SCREEN["手机副屏 & PC 副屏<br/>显示该曲歌词/封面"]
+
+  NOTE["⚠ 蓝牙只出现在 PC→音箱这段；<br/>手机→PC 用网络（Win 不能当蓝牙音频接收端）"]
