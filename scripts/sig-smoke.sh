@@ -16,7 +16,7 @@ PIN=$(grep -oE "PIN=[0-9]{6}" "$LOG" | head -1 | cut -d= -f2)
 if [ -z "$PIN" ]; then echo "[smoke] ✗ Host 未起来"; cat "$LOG"; exit 1; fi
 echo "[smoke] Host PIN=$PIN，运行 RemoteSim --sign --verify"
 
-dotnet run --project src/SongLink.RemoteSim -c Debug --no-build -- \
+dotnet run --project src/SongLink.RemoteSim -c Debug -- \
   --url "ws://localhost:$PORT/" --pin "$PIN" --sign --verify \
   --cmds "next,search:Coldplay,pick:Yellow:Coldplay" --seconds 2 2>&1 | tee "$OUT"
 

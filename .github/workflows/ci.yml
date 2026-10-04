@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches: [ main ]
-    paths: [ 'src/**', 'SongLink.sln', '.github/workflows/ci.yml' ]
+    paths: [ 'src/**', 'SongLink.sln', 'scripts/**', '.github/workflows/ci.yml' ]
   pull_request:
     branches: [ main ]
   workflow_dispatch:
@@ -30,6 +30,11 @@ jobs:
           dotnet build src/SongLink.Host.AudioStream/SongLink.Host.AudioStream.csproj -c Release
           dotnet build src/SongLink.Host.Adapters.UiaPick/SongLink.Host.Adapters.UiaPick.csproj -c Release
           dotnet build src/SongLink.RemoteSim/SongLink.RemoteSim.csproj -c Release
+
+      # HMAC 端到端签名联调：起 requireFrameSig Host + RemoteSim --sign --verify，断言入站验签/出站签名通过
+      - name: HMAC sig-smoke integration
+        shell: bash
+        run: bash scripts/sig-smoke.sh
 
       # WinRT 适配器（SMTC 读取 / 系统 OCR）依赖 Windows SDK 投影 pack；runner 若缺则 best-effort，不硬阻断核心流水线
       - name: Build WinRT adapters (Smtc + Ocr, best-effort)
