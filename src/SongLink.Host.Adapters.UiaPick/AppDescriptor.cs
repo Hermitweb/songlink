@@ -32,6 +32,14 @@ public sealed class AppDescriptor
     /// <summary>搜索/结果等待超时（毫秒）。</summary>
     public int PickTimeoutMs { get; set; } = 6000;
 
+    // —— OCR 兜底（UIA 读不到控件时用，架构 R2）——
+    /// <summary>搜索框坐标 [x,y]：UIA 找不到搜索框时，点它聚焦再输入歌名。</summary>
+    public int[]? SearchBoxPoint { get; set; }
+    /// <summary>结果区域 [x,y,w,h]：OCR 只在该区域内找歌名并点击。</summary>
+    public int[]? ResultRegion { get; set; }
+    /// <summary>OCR 语言标签（如 zh-Hans）。</summary>
+    public string? OcrLanguageTag { get; set; }
+
     public static readonly JsonSerializerOptions JsonOpts = new()
     {
         PropertyNameCaseInsensitive = true,

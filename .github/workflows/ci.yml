@@ -31,10 +31,12 @@ jobs:
           dotnet build src/SongLink.Host.Adapters.UiaPick/SongLink.Host.Adapters.UiaPick.csproj -c Release
           dotnet build src/SongLink.RemoteSim/SongLink.RemoteSim.csproj -c Release
 
-      # SMTC 适配器依赖 Windows SDK 投影 pack；runner 若缺该组件则 best-effort，不硬阻断核心流水线
-      - name: Build SMTC adapter (WinRT, best-effort)
+      # WinRT 适配器（SMTC 读取 / 系统 OCR）依赖 Windows SDK 投影 pack；runner 若缺则 best-effort，不硬阻断核心流水线
+      - name: Build WinRT adapters (Smtc + Ocr, best-effort)
         continue-on-error: true
-        run: dotnet build src/SongLink.Host.Adapters.Smtc/SongLink.Host.Adapters.Smtc.csproj -c Release
+        run: |
+          dotnet build src/SongLink.Host.Adapters.Smtc/SongLink.Host.Adapters.Smtc.csproj -c Release
+          dotnet build src/SongLink.Host.Adapters.Ocr/SongLink.Host.Adapters.Ocr.csproj -c Release
 
       - name: Upload test results
         if: always()

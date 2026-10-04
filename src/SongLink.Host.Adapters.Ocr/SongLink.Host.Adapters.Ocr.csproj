@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SongLink.Host.Adapters.Ocr</AssemblyName>
+    <RootNamespace>SongLink.Host.Adapters.Ocr</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;CS8602</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SongLink.Host.Adapters.UiaPick\SongLink.Host.Adapters.UiaPick.csproj" />
+  </ItemGroup>
+
+  <!--
+    ⚠ 依赖 Windows.Media.Ocr（WinRT），需开发机带 Windows SDK 投影 pack 才能编译。
+    本机精简 SDK 缺该 pack → 会报找不到 Windows.Media.Ocr 等，非代码缺陷。
+    实现 IOcrEngine（定义在 UiaPick），把 BGRA 截图喂给系统 OCR，返回词+包围盒。
+  -->
+
+</Project>
