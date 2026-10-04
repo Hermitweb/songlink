@@ -17,6 +17,8 @@ internal static class Program
 {
     private static long _seq;
     private static long Next() => Interlocked.Increment(ref _seq);
+    private static bool _sign;
+    private static volatile string? _token;
 
     private static async Task<int> Main(string[] args)
     {
@@ -24,6 +26,7 @@ internal static class Program
         string url = GetArg(args, "--url") ?? "ws://localhost:51999/";
         var cmds = (GetArg(args, "--cmds") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         int seconds = int.TryParse(GetArg(args, "--seconds"), out var s) ? s : 0;
+        _sign = args.Contains("--sign");
 
         using var ws = new ClientWebSocket();
         try { await ws.ConnectAsync(new Uri(url), CancellationToken.None); }
@@ -34,6 +37,13 @@ internal static class Program
 
         var cts = new CancellationTokenSource();
         var reader = Task.Run(() => ReadLoop(ws, cts.Token));
+
+        if (_sign)
+        {   // 等待 authResult 带回 token 作为签名密钥
+            var dl = DateTime.UtcNow.AddSeconds(2);
+            while (_token is null && DateTime.UtcNow < dl) await Task.Delay(50);
+            Console.WriteLine(_token is null ? "[remote-sim] ⚠ 签名已开启但未拿到 token" : "[remote-sim] 已获取 token，命令帧将 HMAC 签名");
+        }
 
         if (cmds.Length > 0)
         {
@@ -97,8 +107,9 @@ internal static class Program
                 break;
         }
 
+        if (_sign && _token is not null) FrameSigner.Sign(_token, cmd);
         await Send(ws, cmd);
-        Console.WriteLine($"→ 发送 {action}{(toks.Length > 1 ? " " + string.Join(' ', toks.Skip(1)) : "")}");
+        Console.WriteLine($"→ 发送 {action}{(toks.Length > 1 ? " " + string.Join(' ', toks.Skip(1)) : "")}{(_sign && cmd.Sig is not null ? " [sig]" : "")}");
     }
 
     private static async Task ReadLoop(WebSocket ws, CancellationToken ct)
@@ -127,7 +138,7 @@ internal static class Program
                 case State st: Console.WriteLine($"  ← state: {st.Now.Title} — {st.Now.Artist}  [{st.Now.Status}] pos={st.Now.Pos}s"); break;
                 case Ack a: Console.WriteLine($"  ← ack ref={a.Ref} ok={a.Ok}"); break;
                 case ErrorFrame e: Console.WriteLine($"  ← error {e.Code} {e.Hint}"); break;
-                case AuthResult ar: Console.WriteLine($"  ← authResult ok={ar.Ok}{(string.IsNullOrEmpty(ar.Token) ? "" : " token=" + ar.Token[..Math.Min(8, ar.Token.Length)] + "…")} {ar.Code}"); break;
+                case AuthResult ar: if (!string.IsNullOrEmpty(ar.Token)) _token = ar.Token; Console.WriteLine($"  ← authResult ok={ar.Ok}{(string.IsNullOrEmpty(ar.Token) ? "" : " token=" + ar.Token[..Math.Min(8, ar.Token.Length)] + "…")} {ar.Code}"); break;
                 case SearchResults sr: Console.WriteLine($"  ← searchResults \"{sr.Query}\" → {sr.Results.Count} 条：{string.Join(", ", sr.Results.Take(5).Select(r => r.Title))}"); break;
                 case Lyric ly: Console.WriteLine($"  ← lyric {ly.TrackId} ({ly.Lines.Count} 行)"); break;
                 case Hello h: Console.WriteLine($"  ← hello host role={h.Role} dev={h.Device}"); break;

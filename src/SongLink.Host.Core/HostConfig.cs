@@ -17,6 +17,7 @@ public sealed class HostConfig
     public string? OcrAssembly { get; set; }             // OCR 引擎 DLL（反射加载，接入 UIA 的 OCR 兜底）
     public string? OcrType { get; set; }                 // OCR 引擎类型全名（默认 MediaOcrEngine）
     public string OcrLanguageTag { get; set; } = "zh-Hans";
+    public bool RequireFrameSig { get; set; } = false;   // 契约 §6：入站命令帧强制 HMAC 验签（默认关）
     public string? Pin { get; set; }                     // null → 运行时自动生成 6 位
 
     public static readonly JsonSerializerOptions JsonOpts = new()
@@ -50,6 +51,7 @@ public sealed class HostConfig
                 case "--ocr-assembly": OcrAssembly = args[i + 1]; break;
                 case "--ocr-type": OcrType = args[i + 1]; break;
                 case "--ocr-lang": OcrLanguageTag = args[i + 1]; break;
+                case "--require-sig": RequireFrameSig = bool.TryParse(args[i + 1], out var rs) && rs; break;
                 case "--pin": Pin = args[i + 1]; break;
             }
         }

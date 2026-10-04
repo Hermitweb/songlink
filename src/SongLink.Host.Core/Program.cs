@@ -25,9 +25,9 @@ internal static class Program
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-        await using var server = new HostServer(adapter, cfg.Port, cfg.Pin);
+        await using var server = new HostServer(adapter, cfg.Port, cfg.Pin, requireFrameSig: cfg.RequireFrameSig);
         server.Start(cfg.Port);
-        Console.WriteLine($"[host] 组合根：adapter={cfg.Adapter}  port={cfg.Port}  外部程序集={cfg.AdapterAssembly ?? "(内置)"}");
+        Console.WriteLine($"[host] 组合根：adapter={cfg.Adapter}  port={cfg.Port}  外部程序集={cfg.AdapterAssembly ?? "(内置)"}  强制验签={cfg.RequireFrameSig}");
         Console.WriteLine("按 Ctrl+C 退出。");
         await Task.Delay(Timeout.Infinite, cts.Token).ContinueWith(_ => { });
         return 0;

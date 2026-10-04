@@ -29,6 +29,7 @@ public abstract class Frame
     [JsonPropertyName("seq")] public long Seq { get; set; }
     [JsonPropertyName("id")] public string? Id { get; set; }
     [JsonPropertyName("ts")] public double? Ts { get; set; }
+    [JsonPropertyName("sig")] public string? Sig { get; set; }   // 契约 §6：HMAC-SHA256(token, canonical(frame 去 sig)) 十六进制
 }
 
 public sealed class Hello : Frame

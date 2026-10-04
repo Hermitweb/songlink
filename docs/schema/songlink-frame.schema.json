@@ -13,7 +13,8 @@
     },
     "seq": { "type": "integer", "minimum": 0 },
     "id": { "type": "string" },
-    "ts": { "type": "number" }
+    "ts": { "type": "number" },
+    "sig": { "type": "string", "description": "HMAC-SHA256(token, canonical(frame 去 sig)) 十六进制（契约 §6，可选）" }
   },
   "allOf": [
     {

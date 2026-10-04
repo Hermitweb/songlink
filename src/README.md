@@ -11,7 +11,7 @@
 | `SongLink.Host.Core` | net8.0-windows | Protocol, AudioStream | ✅ | HttpListener WebSocket 服务器 + Media Bus + `IPlayerAdapter` + `FakeAdapter` + 鉴权/歌词/封面/重放/组合根 |
 | `SongLink.Host.AudioStream` | net8.0-windows | Protocol, Concentus, NAudio | ✅ | 手机音频串流接收：UDP→Concentus 解 Opus→`IAudioRenderer`(WASAPI/Null) |
 | `SongLink.RemoteSim` | net8.0 | Protocol | ✅ | 命令行扮演安卓遥控端（集成测试/手动验证台） |
-| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream, UiaPick | ✅ | 57 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 + M2 点歌框架 + OCR 匹配策略 |
+| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream, UiaPick | ✅ | 64 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 + M2 点歌框架 + OCR 匹配 + HMAC 验签 |
 | `SongLink.Host.Adapters.UiaPick` | net8.0-windows | Protocol, Host.Core, FlaUI | ✅ 编译 | M2 点歌框架：包 inner(SMTC) + UIA 点歌，UIA 读不到时回退 **OCR 兜底**(截图→`OcrPickStrategy` 匹配→点坐标)；`AppDescriptor` 数据驱动，per-app 值需真机校准 |
 | `SongLink.Host.Adapters.Ocr` | net8.0-windows10.0.19041.0 | UiaPick | ⚠ 需开发机（投影 pack） | `MediaOcrEngine`：Windows.Media.Ocr 实现 `IOcrEngine`（BGRA→词+包围盒） |
 | `SongLink.Host.Adapters.Smtc` | net8.0-windows10.0.19041.0 | Protocol, Host.Core | ⚠ 需开发机（Windows 投影 pack） | 真实 SMTC 适配器，实现同一 `IPlayerAdapter` |
@@ -43,6 +43,7 @@ cd SongLink.RemoteSim && dotnet run -- --url ws://localhost:51999/ --pin <上面
 - **封面（评审 #4）**：`ArtStore` 按 ref 取图（含路径穿越防护），`GET /art/{ref}` 下发，`NowPlaying.artRef` 指向它。
 - **唇同步 offset（评审 #11）**：`calibrate` 存每曲/全局偏移，`lyric.offsetMs` 随帧下发，calibrate 后立即重发当前歌词；offset 机制本机已测，真正校准靠人耳在真机微调。
 - **协议即契约**：帧类型/字段与 `docs/schema/songlink-frame.schema.json` 一一对应，`SongLink.Protocol.Tests` 每次 `dotnet test` 校验真实发出的帧防漂移。
+- **每帧 HMAC 验签（契约 §6）**：`FrameSigner` 对入站 `cmd` 计算/校验 `sig=HMAC-SHA256(token, canonical去sig)`；HostServer `requireFrameSig`（`--require-sig true`，默认关）开启时未签名/签名错回 `AUTH_FAILED`；RemoteSim `--sign` 演示签名。
 - **音频串流并入 Host（架构 §14）**：`SongLink.Host.AudioStream` 的 `AudioStreamSink`（UDP→Concentus 解 Opus→`IAudioRenderer`）由 HostServer 在 `audio:start/stop` 时启停；`setSourceMode(PC_LOCAL)` 会停 sink 交还输出。渲染器可注入——真机 `WasapiRenderer`（→PC 蓝牙/音箱），CI/无声卡用 `NullRenderer` 跑解码回路（本机 47 项含此）。
 
 ## 组合根配置化（评审后续）

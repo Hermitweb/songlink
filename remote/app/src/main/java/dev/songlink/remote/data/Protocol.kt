@@ -14,6 +14,7 @@ sealed class Frame {
     @SerialName("seq") var seq: Long = 0
     @SerialName("id") var id: String? = null
     @SerialName("ts") var ts: Double? = null
+    @SerialName("sig") var sig: String? = null
 }
 
 @Serializable

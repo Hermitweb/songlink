@@ -24,6 +24,7 @@ public sealed class HostServer : IAsyncDisposable
     private readonly ReplayBuffer _replay = new();
     private readonly object _pubLock = new();
     private readonly IAudioRenderer? _audioRenderer;
+    private readonly bool _requireFrameSig;
     private AudioStreamSink? _audioSink;
     private readonly ConcurrentDictionary<int, ClientConn> _clients = new();
     private readonly CancellationTokenSource _cts = new();
@@ -44,11 +45,12 @@ public sealed class HostServer : IAsyncDisposable
         public string? Token { get; set; }
     }
 
-    public HostServer(IPlayerAdapter adapter, int port, string? pin = null, IAudioRenderer? audioRenderer = null)
+    public HostServer(IPlayerAdapter adapter, int port, string? pin = null, IAudioRenderer? audioRenderer = null, bool requireFrameSig = false)
     {
         _adapter = adapter;
         _auth = new AuthManager(pin);
         _audioRenderer = audioRenderer;
+        _requireFrameSig = requireFrameSig;
         _bus = new MediaBus(adapter);
         _bus.Changed += OnStateChanged;
     }
@@ -177,6 +179,14 @@ public sealed class HostServer : IAsyncDisposable
         if (!conn.Authed && frame is not Hello)
         {
             SendTo(conn, new ErrorFrame { Ref = frame.Id, Code = "AUTH_FAILED" });
+            return;
+        }
+
+        // 契约 §6：入站命令帧强制 HMAC 验签（用该连接配对后的 token 作密钥）
+        if (_requireFrameSig && conn.Authed && frame is Cmd &&
+            (conn.Token is null || !FrameSigner.Verify(conn.Token, frame)))
+        {
+            SendTo(conn, new ErrorFrame { Ref = frame.Id, Code = "AUTH_FAILED", Hint = "missing/invalid sig" });
             return;
         }
 
