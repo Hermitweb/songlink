@@ -14,6 +14,9 @@ public sealed class HostConfig
     public string? AdapterType { get; set; }             // 适配器类型全名（可空→取程序集内首个 IPlayerAdapter）
     public string InnerAdapter { get; set; } = "fake";   // uia 包装时的内层（读/传输）
     public string? Descriptor { get; set; }              // uia 的 AppDescriptor JSON 路径
+    public string? OcrAssembly { get; set; }             // OCR 引擎 DLL（反射加载，接入 UIA 的 OCR 兜底）
+    public string? OcrType { get; set; }                 // OCR 引擎类型全名（默认 MediaOcrEngine）
+    public string OcrLanguageTag { get; set; } = "zh-Hans";
     public string? Pin { get; set; }                     // null → 运行时自动生成 6 位
 
     public static readonly JsonSerializerOptions JsonOpts = new()
@@ -31,7 +34,7 @@ public sealed class HostConfig
         catch { return new HostConfig(); }
     }
 
-    /// <summary>命令行覆盖：--port N --adapter NAME --assembly PATH --type FULL --pin NNNNNN</summary>
+    /// <summary>命令行覆盖：--port --adapter --assembly --type --inner --descriptor --ocr-assembly --ocr-type --ocr-lang --pin</summary>
     public HostConfig ApplyArgs(string[] args)
     {
         for (int i = 0; i < args.Length - 1; i++)
@@ -42,6 +45,11 @@ public sealed class HostConfig
                 case "--adapter": Adapter = args[i + 1]; break;
                 case "--assembly": case "--adapter-assembly": AdapterAssembly = args[i + 1]; break;
                 case "--type": case "--adapter-type": AdapterType = args[i + 1]; break;
+                case "--inner": InnerAdapter = args[i + 1]; break;
+                case "--descriptor": Descriptor = args[i + 1]; break;
+                case "--ocr-assembly": OcrAssembly = args[i + 1]; break;
+                case "--ocr-type": OcrType = args[i + 1]; break;
+                case "--ocr-lang": OcrLanguageTag = args[i + 1]; break;
                 case "--pin": Pin = args[i + 1]; break;
             }
         }

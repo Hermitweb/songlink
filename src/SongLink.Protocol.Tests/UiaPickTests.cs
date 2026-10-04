@@ -69,4 +69,35 @@ public class UiaPickTests
     [Fact]
     public void AdapterFactory_uia_without_descriptor_throws()
         => Assert.Throws<InvalidOperationException>(() => AdapterFactory.Create(new HostConfig { Adapter = "uia" }));
+
+    [Fact]
+    public void AdapterFactory_uia_with_ocr_engine_enables_fallback()
+    {
+        var path = WriteDescriptor();
+        try
+        {
+            var a = AdapterFactory.Create(new HostConfig
+            {
+                Adapter = "uia",
+                Descriptor = path,
+                InnerAdapter = "fake",
+                OcrAssembly = typeof(SongLink.Host.Adapters.UiaPick.Ocr.StaticOcrEngine).Assembly.Location,
+                OcrType = "SongLink.Host.Adapters.UiaPick.Ocr.StaticOcrEngine",
+            });
+            Assert.True(((UiaPickAdapter)a).HasOcrFallback);   // OCR 兜底已注入生效
+        }
+        finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void AdapterFactory_uia_without_ocr_engine_has_no_fallback()
+    {
+        var path = WriteDescriptor();
+        try
+        {
+            var a = AdapterFactory.Create(new HostConfig { Adapter = "uia", Descriptor = path });
+            Assert.False(((UiaPickAdapter)a).HasOcrFallback);
+        }
+        finally { File.Delete(path); }
+    }
 }

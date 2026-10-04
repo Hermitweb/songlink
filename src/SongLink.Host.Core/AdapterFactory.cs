@@ -58,9 +58,21 @@ public static class AdapterFactory
         var descriptor = JsonSerializer.Deserialize(File.ReadAllText(Resolve(cfg.Descriptor!)), descType, HostConfig.JsonOpts)
             ?? throw new InvalidOperationException($"无法解析 descriptor：{cfg.Descriptor}");
         var inner = Create(new HostConfig { Adapter = cfg.InnerAdapter });
-        var wrapped = Activator.CreateInstance(adapterType, inner, descriptor) as IPlayerAdapter
+
+        object? engine = null;
+        if (!string.IsNullOrWhiteSpace(cfg.OcrAssembly))
+        {
+            var ocrAsm = Assembly.LoadFrom(Resolve(cfg.OcrAssembly!));
+            var engineType = ocrAsm.GetType(cfg.OcrType ?? "SongLink.Host.Adapters.Ocr.MediaOcrEngine")
+                ?? throw new InvalidOperationException($"找不到 OCR 引擎类型：{cfg.OcrType}");
+            engine = Activator.CreateInstance(engineType, cfg.OcrLanguageTag);
+        }
+
+        var wrapped = (engine is not null
+            ? Activator.CreateInstance(adapterType, new object[] { inner, descriptor, engine })
+            : Activator.CreateInstance(adapterType, inner, descriptor)) as IPlayerAdapter
             ?? throw new InvalidOperationException("UiaPickAdapter 实例化失败。");
-        Console.WriteLine($"[factory] UIA 点歌适配器：inner={cfg.InnerAdapter} descriptor={cfg.Descriptor}");
+        Console.WriteLine($"[factory] UIA 点歌适配器：inner={cfg.InnerAdapter} descriptor={cfg.Descriptor} ocr={(engine is null ? "off" : cfg.OcrAssembly)}");
         return wrapped;
     }
 

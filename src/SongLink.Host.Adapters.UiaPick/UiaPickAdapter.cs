@@ -34,6 +34,8 @@ public sealed class UiaPickAdapter : IPlayerAdapter, IDisposable
 
     public string AppId => _desc.AppId;
     public AdapterCapability Caps => _inner.Caps | AdapterCapability.Pick;
+    /// <summary>OCR 兜底是否已注入可用（组合根接入 MediaOcrEngine/StaticOcrEngine 后为 true）。</summary>
+    public bool HasOcrFallback => _ocr is { IsAvailable: true };
 
     // 读/传输：完全委托 inner（SMTC）
     public Task<NowPlaying?> ReadNowPlaying(CancellationToken ct = default) => _inner.ReadNowPlaying(ct);
