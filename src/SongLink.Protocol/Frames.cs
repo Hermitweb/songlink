@@ -48,6 +48,7 @@ public sealed class AuthResult : Frame
     [JsonPropertyName("ref")] public string Ref { get; set; } = "";
     [JsonPropertyName("ok")] public bool Ok { get; set; }
     [JsonPropertyName("token")] public string? Token { get; set; }
+    [JsonPropertyName("hostKey")] public string? HostKey { get; set; }   // 开启签名模式时下发，供客户端验证 Host 出站帧
     [JsonPropertyName("code")] public string? Code { get; set; } // 失败时如 AUTH_FAILED
 }
 

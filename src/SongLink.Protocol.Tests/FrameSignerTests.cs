@@ -77,6 +77,34 @@ public class FrameSignerTests
         Assert.True(ack is { Ok: true });
     }
 
+    [Fact]
+    public async Task HostServer_signs_outbound_broadcast_with_hostkey()
+    {
+        int port = 52200 + Random.Shared.Next(300);
+        const string Pin = "444444";
+        await using var server = new HostServer(new FakeAdapter(), port, Pin, requireFrameSig: true);
+        server.Start(port);
+        await Task.Delay(200);
+
+        using var ws = new ClientWebSocket();
+        await ws.ConnectAsync(new Uri($"ws://localhost:{port}/"), CancellationToken.None);
+        await Send(ws, new Hello { Role = "remote", Device = "t", Pin = Pin, Id = "h" });
+
+        var ar = await ReadUntil(ws, f => f is AuthResult a && a.Ok, 2000) as AuthResult;
+        Assert.NotNull(ar);
+        Assert.False(string.IsNullOrEmpty(ar!.HostKey), "签名模式开启时 authResult 应带 hostKey");
+
+        // 用 token 签名的入站命令 → 触发一次出站广播
+        var cmd = new Cmd { Id = "c1", Action = "next" };
+        FrameSigner.Sign(ar.Token!, cmd);
+        await Send(ws, cmd);
+
+        // 收到的带 Sig 的 State 帧，应能用 hostKey 验证
+        var st = await ReadUntil(ws, f => f is State s && s.Sig != null, 2500) as State;
+        Assert.NotNull(st);
+        Assert.True(FrameSigner.Verify(ar.HostKey!, st!));
+    }
+
     // —— helpers ——
     private static async Task Send(WebSocket ws, Frame f)
     {

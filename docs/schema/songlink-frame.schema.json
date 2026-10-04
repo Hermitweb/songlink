@@ -146,6 +146,7 @@
           "ref": { "type": "string" },
           "ok": { "type": "boolean" },
           "token": { "type": "string" },
+          "hostKey": { "type": "string" },
           "code": { "type": "string" }
         }
       }

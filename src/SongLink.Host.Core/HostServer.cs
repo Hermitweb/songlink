@@ -21,6 +21,7 @@ public sealed class HostServer : IAsyncDisposable
     private readonly LyricService _lyric = new();
     private readonly ArtStore _art = new();
     private readonly AuthManager _auth;
+    private readonly string _hostKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     private readonly ReplayBuffer _replay = new();
     private readonly object _pubLock = new();
     private readonly IAudioRenderer? _audioRenderer;
@@ -33,6 +34,7 @@ public sealed class HostServer : IAsyncDisposable
     private string _lastTrackKey = "";
 
     public string Pin => _auth.Pin;
+    public string HostKey => _hostKey;
     public AudioStreamSink? AudioSink => _audioSink;
 
     private sealed class ClientConn
@@ -199,7 +201,7 @@ public sealed class HostServer : IAsyncDisposable
                     conn.Authed = true;
                     conn.Caps.Clear(); conn.Caps.AddRange(h.Caps);
                     conn.Token = _auth.IssueToken(h.Device ?? "unknown");
-                    SendTo(conn, new AuthResult { Ref = h.Id ?? "", Ok = true, Token = conn.Token });
+                    SendTo(conn, new AuthResult { Ref = h.Id ?? "", Ok = true, Token = conn.Token, HostKey = _requireFrameSig ? _hostKey : null });
                     SendTo(conn, new Hello { Role = "host", Device = Environment.MachineName, Os = "Windows" });
                     if (h.LastSeq is > 0) ReplaySince(conn, h.LastSeq.Value);   // §7 断线补发
                     else if (_bus.Current is not null) SendTo(conn, new State { Now = _bus.Current.Clone() });
@@ -308,6 +310,7 @@ public sealed class HostServer : IAsyncDisposable
         lock (_pubLock)
         {
             var f = new State { Now = np.Clone(), Seq = Next() };
+            SignOutbound(f);
             _replay.Add(f);
             foreach (var c in _clients.Values.Where(c => c.Authed)) c.Outbox.Writer.TryWrite(f);
         }
@@ -318,6 +321,7 @@ public sealed class HostServer : IAsyncDisposable
         lock (_pubLock)
         {
             frame.Seq = Next();
+            SignOutbound(frame);
             _replay.Add(frame);
             foreach (var c in _clients.Values.Where(c => c.Authed)) c.Outbox.Writer.TryWrite(frame);
         }
@@ -327,6 +331,12 @@ public sealed class HostServer : IAsyncDisposable
     private void SendTo(ClientConn conn, Frame frame)
     {
         lock (_pubLock) { frame.Seq = Next(); conn.Outbox.Writer.TryWrite(frame); }
+    }
+
+    /// <summary>出站广播帧签名（任务2）：仅签名模式开启时，用 host-key 盖 Sig（共享帧一次签名对所有连接/重放有效）。</summary>
+    private void SignOutbound(Frame frame)
+    {
+        if (_requireFrameSig) frame.Sig = FrameSigner.Compute(_hostKey, frame);
     }
 
     /// <summary>§7 断线补发：把 seq &gt; lastSeq 的缓冲广播按原 seq 补发给该连接。</summary>

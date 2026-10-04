@@ -35,6 +35,7 @@ data class AuthResult(
     @SerialName("ref") val ref: String = "",
     @SerialName("ok") val ok: Boolean = false,
     @SerialName("token") val token: String? = null,
+    @SerialName("hostKey") val hostKey: String? = null,
     @SerialName("code") val code: String? = null,
 ) : Frame()
 
