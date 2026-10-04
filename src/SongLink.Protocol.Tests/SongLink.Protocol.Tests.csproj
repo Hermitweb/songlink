@@ -13,11 +13,13 @@
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="JsonSchema.Net" Version="7.3.0" />
+    <PackageReference Include="Concentus" Version="2.2.2" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
     <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+    <ProjectReference Include="..\SongLink.Host.AudioStream\SongLink.Host.AudioStream.csproj" />
   </ItemGroup>
 
   <ItemGroup>

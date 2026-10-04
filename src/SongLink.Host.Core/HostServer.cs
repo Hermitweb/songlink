@@ -3,6 +3,7 @@ using System.Net.WebSockets;
 using System.Threading.Channels;
 using System.Net;
 using System.Text;
+using SongLink.Host.AudioStream;
 using SongLink.Protocol;
 
 namespace SongLink.Host;
@@ -22,6 +23,8 @@ public sealed class HostServer : IAsyncDisposable
     private readonly AuthManager _auth;
     private readonly ReplayBuffer _replay = new();
     private readonly object _pubLock = new();
+    private readonly IAudioRenderer? _audioRenderer;
+    private AudioStreamSink? _audioSink;
     private readonly ConcurrentDictionary<int, ClientConn> _clients = new();
     private readonly CancellationTokenSource _cts = new();
     private Task? _acceptLoop;
@@ -29,6 +32,7 @@ public sealed class HostServer : IAsyncDisposable
     private string _lastTrackKey = "";
 
     public string Pin => _auth.Pin;
+    public AudioStreamSink? AudioSink => _audioSink;
 
     private sealed class ClientConn
     {
@@ -40,10 +44,11 @@ public sealed class HostServer : IAsyncDisposable
         public string? Token { get; set; }
     }
 
-    public HostServer(IPlayerAdapter adapter, int port, string? pin = null)
+    public HostServer(IPlayerAdapter adapter, int port, string? pin = null, IAudioRenderer? audioRenderer = null)
     {
         _adapter = adapter;
         _auth = new AuthManager(pin);
+        _audioRenderer = audioRenderer;
         _bus = new MediaBus(adapter);
         _bus.Changed += OnStateChanged;
     }
@@ -207,9 +212,21 @@ public sealed class HostServer : IAsyncDisposable
                 });
                 break;
 
+            case AudioStart a:
+                _audioSink ??= new AudioStreamSink(_audioRenderer ?? new WasapiRenderer(), a.Rate > 0 ? a.Rate : 48000, a.Ch > 0 ? a.Ch : 2, a.FrameMs > 0 ? a.FrameMs : 20);
+                _audioSink.Start(a.Port > 0 ? a.Port : 51000);
+                SendTo(conn, new Ack { Ref = a.Id ?? "", Ok = true });
+                break;
+
+            case AudioStop:
+                _audioSink?.Stop();
+                SendTo(conn, new Ack { Ref = "", Ok = true });
+                break;
+
             case Cmd c when c.Action == "setSourceMode":
                 var mode = c.Args?["mode"]?.GetValue<string>() ?? "PC_LOCAL";
                 _bus.SetMode(mode);   // #12：进 PHONE_STREAM 时 MediaBus 冻结 PC 出声
+                if (mode == "PC_LOCAL") _audioSink?.Stop();   // 交还输出给 PC
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
                 Broadcast(new EventFrame { Name = "source-mode-changed", Mode = _bus.SourceMode });
                 break;
@@ -344,6 +361,7 @@ public sealed class HostServer : IAsyncDisposable
         }
         _listener.Stop();
         if (_acceptLoop is not null) { try { await _acceptLoop; } catch { } }
+        _audioSink?.Dispose();
         await _bus.DisposeAsync();
     }
 }

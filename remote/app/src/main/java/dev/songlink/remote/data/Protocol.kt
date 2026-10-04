@@ -113,3 +113,17 @@ data class SrcMeta(
 @Serializable
 @SerialName("ping")
 class Ping : Frame()
+
+@Serializable
+@SerialName("audio:start")
+data class AudioStart(
+    @SerialName("codec") val codec: String = "opus",
+    @SerialName("rate") val rate: Int = 48000,
+    @SerialName("ch") val ch: Int = 2,
+    @SerialName("frameMs") val frameMs: Int = 20,
+    @SerialName("port") val port: Int = 51000,
+) : Frame()
+
+@Serializable
+@SerialName("audio:stop")
+class AudioStop : Frame()

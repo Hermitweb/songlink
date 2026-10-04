@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\SongLink.Host.AudioStream\SongLink.Host.AudioStream.csproj" />
   </ItemGroup>
 
   <ItemGroup>

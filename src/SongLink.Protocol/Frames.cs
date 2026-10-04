@@ -18,6 +18,7 @@ namespace SongLink.Protocol;
 [JsonDerivedType(typeof(Art), "art")]
 [JsonDerivedType(typeof(SrcMeta), "srcMeta")]
 [JsonDerivedType(typeof(AudioStart), "audio:start")]
+[JsonDerivedType(typeof(AudioStop), "audio:stop")]
 [JsonDerivedType(typeof(ErrorFrame), "error")]
 [JsonDerivedType(typeof(Ping), "ping")]
 [JsonDerivedType(typeof(AuthResult), "authResult")]
@@ -145,6 +146,8 @@ public sealed class AudioStart : Frame
     [JsonPropertyName("frameMs")] public int FrameMs { get; set; } = 20;
     [JsonPropertyName("port")] public int Port { get; set; } = 51000;
 }
+
+public sealed class AudioStop : Frame { }
 
 public sealed class ErrorFrame : Frame
 {
