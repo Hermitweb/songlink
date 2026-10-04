@@ -18,11 +18,14 @@ internal static class Program
     private static long _seq;
     private static long Next() => Interlocked.Increment(ref _seq);
     private static bool _sign;
+    private static bool _verify;
     private static volatile string? _token;
+    private static volatile string? _hostKey;
 
     private static async Task<int> Main(string[] args)
     {
         Console.OutputEncoding = Encoding.UTF8;
+        _verify = args.Contains("--verify");
         string url = GetArg(args, "--url") ?? "ws://localhost:51999/";
         var cmds = (GetArg(args, "--cmds") ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         int seconds = int.TryParse(GetArg(args, "--seconds"), out var s) ? s : 0;
@@ -135,16 +138,27 @@ internal static class Program
             var f = FrameCodec.Parse(text);
             switch (f)
             {
-                case State st: Console.WriteLine($"  ← state: {st.Now.Title} — {st.Now.Artist}  [{st.Now.Status}] pos={st.Now.Pos}s"); break;
+                case State st: Console.WriteLine($"  ← state: {st.Now.Title} — {st.Now.Artist}  [{st.Now.Status}] pos={st.Now.Pos}s{SigMark(st)}"); break;
                 case Ack a: Console.WriteLine($"  ← ack ref={a.Ref} ok={a.Ok}"); break;
                 case ErrorFrame e: Console.WriteLine($"  ← error {e.Code} {e.Hint}"); break;
-                case AuthResult ar: if (!string.IsNullOrEmpty(ar.Token)) _token = ar.Token; Console.WriteLine($"  ← authResult ok={ar.Ok}{(string.IsNullOrEmpty(ar.Token) ? "" : " token=" + ar.Token[..Math.Min(8, ar.Token.Length)] + "…")} {ar.Code}"); break;
+                case AuthResult ar:
+                    if (!string.IsNullOrEmpty(ar.Token)) _token = ar.Token;
+                    if (!string.IsNullOrEmpty(ar.HostKey)) _hostKey = ar.HostKey;
+                    Console.WriteLine($"  ← authResult ok={ar.Ok}{(string.IsNullOrEmpty(ar.Token) ? "" : " token=" + ar.Token[..Math.Min(8, ar.Token.Length)] + "…")}{(string.IsNullOrEmpty(ar.HostKey) ? "" : " hostKey=已下发")} {ar.Code}");
+                    break;
                 case SearchResults sr: Console.WriteLine($"  ← searchResults \"{sr.Query}\" → {sr.Results.Count} 条：{string.Join(", ", sr.Results.Take(5).Select(r => r.Title))}"); break;
-                case Lyric ly: Console.WriteLine($"  ← lyric {ly.TrackId} ({ly.Lines.Count} 行)"); break;
+                case Lyric ly: Console.WriteLine($"  ← lyric {ly.TrackId} ({ly.Lines.Count} 行){SigMark(ly)}"); break;
                 case Hello h: Console.WriteLine($"  ← hello host role={h.Role} dev={h.Device}"); break;
                 default: Console.WriteLine($"  ← {f?.GetType().Name ?? "未知帧"}"); break;
             }
         }
+    }
+
+    /// <summary>--verify 且帧带 sig 且已拿到 hostKey 时，验证 Host 出站帧签名。</summary>
+    private static string SigMark(Frame f)
+    {
+        if (!_verify || f.Sig is null || _hostKey is null) return "";
+        return FrameSigner.Verify(_hostKey, f) ? " sig=✓" : " sig=✗(校验失败!)";
     }
 
     private static async Task Send(WebSocket ws, Frame f)
