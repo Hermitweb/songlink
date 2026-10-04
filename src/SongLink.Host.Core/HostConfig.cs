@@ -9,9 +9,11 @@ namespace SongLink.Host;
 public sealed class HostConfig
 {
     public int Port { get; set; } = 51999;
-    public string Adapter { get; set; } = "fake";       // fake | smtc | ...
+    public string Adapter { get; set; } = "fake";       // fake | smtc | uia | ...
     public string? AdapterAssembly { get; set; }         // 外部适配器 DLL（反射加载，Host.Core 不硬依赖）
     public string? AdapterType { get; set; }             // 适配器类型全名（可空→取程序集内首个 IPlayerAdapter）
+    public string InnerAdapter { get; set; } = "fake";   // uia 包装时的内层（读/传输）
+    public string? Descriptor { get; set; }              // uia 的 AppDescriptor JSON 路径
     public string? Pin { get; set; }                     // null → 运行时自动生成 6 位
 
     public static readonly JsonSerializerOptions JsonOpts = new()

@@ -1,0 +1,16 @@
+{
+  // ⚠ 模板示例：以下 AutomationId/Name 为占位，需用 Inspect.exe/FlaUInspect 对**具体版本**的 QQ音乐 PC 端校准。
+  //    QQ音乐为 CEF/自绘混合，搜索框/结果项可能读不到 → 真机验证为准（架构 R1/R2）。
+  "appId": "qqmusic",
+  "displayName": "QQ音乐",
+  "exeNames": ["QQMusic"],
+  "windowTitleRegex": "QQ音乐",
+  "launchPath": null,
+  "searchBoxAutomationId": "search_input",
+  "searchBoxName": "搜索",
+  "submitKey": "Enter",
+  "resultItemAutomationId": "search_result_first",
+  "resultItemNameRegex": null,
+  "doubleClickResult": true,
+  "pickTimeoutMs": 6000
+}

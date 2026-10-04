@@ -17,6 +17,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SongLink.Protocol.Tests", "
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SongLink.Host.AudioStream", "src\SongLink.Host.AudioStream\SongLink.Host.AudioStream.csproj", "{2EC354C6-75F0-440A-8454-E97404EC7251}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SongLink.Host.Adapters.UiaPick", "src\SongLink.Host.Adapters.UiaPick\SongLink.Host.Adapters.UiaPick.csproj", "{074A26F1-C18C-450A-A521-CE1075A21F5D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -99,6 +101,18 @@ Global
 		{2EC354C6-75F0-440A-8454-E97404EC7251}.Release|x64.Build.0 = Release|Any CPU
 		{2EC354C6-75F0-440A-8454-E97404EC7251}.Release|x86.ActiveCfg = Release|Any CPU
 		{2EC354C6-75F0-440A-8454-E97404EC7251}.Release|x86.Build.0 = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|x64.Build.0 = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|x86.ActiveCfg = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Debug|x86.Build.0 = Debug|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|x64.ActiveCfg = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|x64.Build.0 = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|x86.ActiveCfg = Release|Any CPU
+		{074A26F1-C18C-450A-A521-CE1075A21F5D}.Release|x86.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -110,5 +124,6 @@ Global
 		{634D5157-D8E4-4A70-80A5-54B449BF2B82} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{D54CC48C-ED7C-41D5-BFD9-DF71CABEEC79} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 		{2EC354C6-75F0-440A-8454-E97404EC7251} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
+		{074A26F1-C18C-450A-A521-CE1075A21F5D} = {827E0CD3-B72D-47B6-A68D-7590B98EB39B}
 	EndGlobalSection
 EndGlobal

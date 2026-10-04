@@ -23,11 +23,12 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # 核心（协议库 / Host.Core / 契约测试 / RemoteSim）必须通过——含 38 项 schema 契约与回归测试
+      # 核心（协议库 / Host.Core / AudioStream / UiaPick / 契约测试 / RemoteSim）必须通过——含 52 项 schema 契约与回归测试
       - name: Build & test core
         run: |
           dotnet test src/SongLink.Protocol.Tests/SongLink.Protocol.Tests.csproj -c Release --logger "trx;LogFileName=core.trx"
           dotnet build src/SongLink.Host.AudioStream/SongLink.Host.AudioStream.csproj -c Release
+          dotnet build src/SongLink.Host.Adapters.UiaPick/SongLink.Host.Adapters.UiaPick.csproj -c Release
           dotnet build src/SongLink.RemoteSim/SongLink.RemoteSim.csproj -c Release
 
       # SMTC 适配器依赖 Windows SDK 投影 pack；runner 若缺该组件则 best-effort，不硬阻断核心流水线

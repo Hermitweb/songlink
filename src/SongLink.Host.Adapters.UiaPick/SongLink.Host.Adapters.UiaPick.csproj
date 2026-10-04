@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <LangVersion>latest</LangVersion>
+    <AssemblyName>SongLink.Host.Adapters.UiaPick</AssemblyName>
+    <RootNamespace>SongLink.Host.Adapters.UiaPick</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;CS8602</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="FlaUI.Core" Version="5.0.0" />
+    <PackageReference Include="FlaUI.UIA3" Version="5.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="descriptors\*.json" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

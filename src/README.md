@@ -11,7 +11,8 @@
 | `SongLink.Host.Core` | net8.0-windows | Protocol, AudioStream | ✅ | HttpListener WebSocket 服务器 + Media Bus + `IPlayerAdapter` + `FakeAdapter` + 鉴权/歌词/封面/重放/组合根 |
 | `SongLink.Host.AudioStream` | net8.0-windows | Protocol, Concentus, NAudio | ✅ | 手机音频串流接收：UDP→Concentus 解 Opus→`IAudioRenderer`(WASAPI/Null) |
 | `SongLink.RemoteSim` | net8.0 | Protocol | ✅ | 命令行扮演安卓遥控端（集成测试/手动验证台） |
-| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream | ✅ | 47 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 |
+| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream, UiaPick | ✅ | 52 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 + M2 点歌框架 |
+| `SongLink.Host.Adapters.UiaPick` | net8.0-windows | Protocol, Host.Core, FlaUI | ✅ 编译 | M2 点歌框架：包 inner(SMTC) + UIA 驱动搜索框点歌；`AppDescriptor` 数据驱动，per-app 值需真机校准 |
 | `SongLink.Host.Adapters.Smtc` | net8.0-windows10.0.19041.0 | Protocol, Host.Core | ⚠ 需开发机（Windows 投影 pack） | 真实 SMTC 适配器，实现同一 `IPlayerAdapter` |
 
 ## 本机已实测

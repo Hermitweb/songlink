@@ -1,11 +1,12 @@
 using System.Reflection;
+using System.Text.Json;
 
 namespace SongLink.Host;
 
 /// <summary>
 /// 适配器工厂（组合根核心）：按配置选择 IPlayerAdapter。
-/// 内置 "fake"（本机可跑）；其余（如 "smtc"）通过反射按配置加载外部程序集——
-/// 这样 Host.Core 不硬依赖 WinRT 适配器工程，本机可编译/测试，开发机换真 SMTC 只需改配置。
+/// 内置 "fake"（本机可跑）；"smtc" 反射按配置加载外部程序集；"uia" 反射装配 UIA 点歌包装器
+/// （内层适配器 + AppDescriptor）。Host.Core 不硬依赖任何适配器工程，本机可编译/测试。
 /// </summary>
 public static class AdapterFactory
 {
@@ -16,6 +17,9 @@ public static class AdapterFactory
             case "fake":
             case "demo":
                 return new FakeAdapter();
+
+            case "uia":
+                return CreateUia(cfg);
 
             default:
                 if (string.IsNullOrWhiteSpace(cfg.AdapterAssembly))
@@ -37,6 +41,27 @@ public static class AdapterFactory
                 Console.WriteLine($"[factory] 反射加载适配器：{type.FullName}");
                 return instance;
         }
+    }
+
+    // UIA 点歌包装器：反射装配（避免 Host.Core ↔ UiaPick 循环引用）
+    private static IPlayerAdapter CreateUia(HostConfig cfg)
+    {
+        if (string.IsNullOrWhiteSpace(cfg.Descriptor))
+            throw new InvalidOperationException("uia 适配器需要配置 descriptor（AppDescriptor JSON 路径）。");
+
+        var asm = Assembly.LoadFrom(Resolve(cfg.AdapterAssembly ?? "SongLink.Host.Adapters.UiaPick.dll"));
+        var descType = asm.GetType("SongLink.Host.Adapters.UiaPick.AppDescriptor")
+            ?? throw new InvalidOperationException("找不到 AppDescriptor 类型。");
+        var adapterType = asm.GetType("SongLink.Host.Adapters.UiaPick.UiaPickAdapter")
+            ?? throw new InvalidOperationException("找不到 UiaPickAdapter 类型。");
+
+        var descriptor = JsonSerializer.Deserialize(File.ReadAllText(Resolve(cfg.Descriptor!)), descType, HostConfig.JsonOpts)
+            ?? throw new InvalidOperationException($"无法解析 descriptor：{cfg.Descriptor}");
+        var inner = Create(new HostConfig { Adapter = cfg.InnerAdapter });
+        var wrapped = Activator.CreateInstance(adapterType, inner, descriptor) as IPlayerAdapter
+            ?? throw new InvalidOperationException("UiaPickAdapter 实例化失败。");
+        Console.WriteLine($"[factory] UIA 点歌适配器：inner={cfg.InnerAdapter} descriptor={cfg.Descriptor}");
+        return wrapped;
     }
 
     private static string Resolve(string path) =>
