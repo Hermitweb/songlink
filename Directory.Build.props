@@ -1,0 +1,25 @@
+<Project>
+
+  <!--
+    仓库级统一构建/分析器设置：所有 src/ 与 spike/ 工程继承。
+    保守策略：启用 .NET 分析器 + 代码风格构建检查，但不把告警当错误(避免误红)。
+    各工程可在自己的 csproj 里覆盖(如 WinRT 工程需要 TargetFramework 版本号)。
+  -->
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+
+    <EnableNETAnalyzers>true</EnableNETAnalyzers>
+    <AnalysisLevel>latest</AnalysisLevel>
+    <AnalysisMode>Default</AnalysisMode>
+    <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+
+    <!-- 构建产物瘦身：CI/本机都不把 obj/bin 纳入版本库(见 .gitignore) -->
+    <Deterministic>true</Deterministic>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+</Project>
