@@ -13,12 +13,21 @@ internal static class Program
         var mode = args.Length > 0 ? args[0] : "run";
         if (mode == "selftest") return await SelfTest();
 
-        int port = args.Length > 1 && int.TryParse(args[1], out var p) ? p : 51999;
+        // 组合根：appsettings.json + 命令行覆盖 → 选适配器 → 起服务
+        var cfg = HostConfig.LoadFile(Path.Combine(AppContext.BaseDirectory, "appsettings.json"));
+        if (args.Length > 1 && int.TryParse(args[1], out var pp)) cfg.Port = pp;   // 兼容 run 51999
+        cfg.ApplyArgs(args);
+
+        IPlayerAdapter adapter;
+        try { adapter = AdapterFactory.Create(cfg); }
+        catch (Exception ex) { Console.WriteLine($"[x] 适配器初始化失败：{ex.Message}"); return 2; }
+
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) => { e.Cancel = true; cts.Cancel(); };
 
-        await using var server = new HostServer(new FakeAdapter(), port);
-        server.Start(port);
+        await using var server = new HostServer(adapter, cfg.Port, cfg.Pin);
+        server.Start(cfg.Port);
+        Console.WriteLine($"[host] 组合根：adapter={cfg.Adapter}  port={cfg.Port}  外部程序集={cfg.AdapterAssembly ?? "(内置)"}");
         Console.WriteLine("按 Ctrl+C 退出。");
         await Task.Delay(Timeout.Infinite, cts.Token).ContinueWith(_ => { });
         return 0;

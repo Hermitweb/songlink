@@ -16,6 +16,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="lyrics\*.lrc" CopyToOutputDirectory="PreserveNewest" />
     <None Update="art\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Update="art\*.jpg" CopyToOutputDirectory="PreserveNewest" />

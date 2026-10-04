@@ -40,11 +40,26 @@ cd SongLink.RemoteSim && dotnet run -- --url ws://localhost:51999/ --pin <上面
 - **唇同步 offset（评审 #11）**：`calibrate` 存每曲/全局偏移，`lyric.offsetMs` 随帧下发，calibrate 后立即重发当前歌词；offset 机制本机已测，真正校准靠人耳在真机微调。
 - **协议即契约**：帧类型/字段与 `docs/schema/songlink-frame.schema.json` 一一对应，`SongLink.Protocol.Tests` 每次 `dotnet test` 校验真实发出的帧防漂移。
 
+## 组合根配置化（评审后续）
+
+`Host.Core` 的 `run` 入口即组合根，由 `HostConfig` + `AdapterFactory` 驱动：
+
+- 配置来源优先级：命令行 `--port/--adapter/--assembly/--type/--pin` &gt; `appsettings.json` &gt; 默认（`adapter=fake`, `port=51999`, `pin=null` 自动生成）。
+- `AdapterFactory` 内置 `fake`（本机可跑）；其余（如 `smtc`）通过**反射按配置加载外部程序集**——Host.Core 不硬依赖 WinRT 适配器工程，因此本机可编译/测试（44 项含组合根测试），开发机换真 SMTC 只改配置、不动代码。
+- 未知适配器且未给 `adapterAssembly` → 清晰报错退出（不静默回落）。
+
+```bash
+# 本机默认（fake）
+dotnet run -- run --port 51999
+# 开发机切真 SMTC（先构建 Smtc 工程，把 dll 放到 Host 输出目录或给绝对路径）
+dotnet run -- run --adapter smtc --assembly SongLink.Host.Adapters.Smtc.dll --type SongLink.Host.Adapters.Smtc.SmtcAdapter
+```
+
 ## 在开发机上接真机（M1-β 起点）
 
-1. 装带「Windows 应用程序开发」工作负载的 VS / Windows App SDK，使 `SongLink.Host.Adapters.Smtc` 可编译。
-2. 建一个组合根（net8.0-windows10.0.19041.0 的 Host App），把 `new HostServer(new SmtcAdapter(), port)` 替换 `FakeAdapter`。
-3. 安卓 `Remote` 用 `docs/协议契约.md` 的帧模型连 `ws://<PC-IP>:51999/`，即可复用同一 Host。
+1. 装带「Windows 应用程序开发」工作负载的 VS / Windows App SDK，使 `SongLink.Host.Adapters.Smtc` 可编译（`dotnet build src/SongLink.Host.Adapters.Smtc`）。
+2. 组合根已就位：构建 Smtc 后，用上面的 `--adapter smtc --assembly … --type …`（或写进 `appsettings.json`）即切到真实 SMTC，无需改代码。
+3. 安卓 `Remote` 用 `docs/协议契约.md` 的帧模型连 `ws://<PC-IP>:51999/`，输 PIN 配对，即可复用同一 Host。
 
 ## 已知边界
 
