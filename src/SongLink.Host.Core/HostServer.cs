@@ -21,6 +21,7 @@ public sealed class HostServer : IAsyncDisposable
     private readonly LyricService _lyric = new();
     private readonly ArtStore _art = new();
     private readonly PlayQueue _queue = new();
+    private readonly LocalLibrary _library = new();
     private readonly AuthManager _auth;
     private readonly string _hostKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     private readonly ReplayBuffer _replay = new();
@@ -97,7 +98,7 @@ public sealed class HostServer : IAsyncDisposable
 
             if (!ctx.Request.IsWebSocketRequest)
             {
-                ServeArt(ctx);
+                ServeHttp(ctx);
                 continue;
             }
 
@@ -105,27 +106,49 @@ public sealed class HostServer : IAsyncDisposable
         }
     }
 
-    /// <summary>GET /art/{ref} → 从 ArtStore 取图下发；非法/不存在分别 400/404。</summary>
-    private void ServeArt(HttpListenerContext ctx)
+    /// <summary>GET /art/{ref} 下发封面；POST /import?title=&artist= 导入音源（body 为音频字节，可空）。</summary>
+    private void ServeHttp(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "";
-        const string prefix = "/art/";
-        if (ctx.Request.HttpMethod == "GET" && path.StartsWith(prefix, StringComparison.Ordinal))
+        try
         {
-            var refId = Uri.UnescapeDataString(path[prefix.Length..]);
-            var got = _art.Get(refId);
-            if (got is not null)
+            if (ctx.Request.HttpMethod == "GET" && path.StartsWith("/art/", StringComparison.Ordinal))
             {
-                var bytes = got.Value.Bytes;
-                ctx.Response.StatusCode = 200;
-                ctx.Response.ContentType = got.Value.Mime;
-                ctx.Response.ContentLength64 = bytes.Length;
-                ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                var refId = Uri.UnescapeDataString(path["/art/".Length..]);
+                var got = _art.Get(refId);
+                if (got is not null)
+                {
+                    var bytes = got.Value.Bytes;
+                    ctx.Response.StatusCode = 200;
+                    ctx.Response.ContentType = got.Value.Mime;
+                    ctx.Response.ContentLength64 = bytes.Length;
+                    ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                }
+                else ctx.Response.StatusCode = 404;
             }
-            else ctx.Response.StatusCode = 404;
+            else if (ctx.Request.HttpMethod == "POST" && path == "/import")
+            {
+                byte[] body;
+                using (var ms = new MemoryStream()) { ctx.Request.InputStream.CopyTo(ms); body = ms.ToArray(); }
+                var title = ctx.Request.QueryString["title"] ?? "";
+                var artist = ctx.Request.QueryString["artist"] ?? "";
+                string json; int code;
+                try
+                {
+                    var t = _library.Import(title, artist, body.Length > 0 ? body : null);
+                    json = System.Text.Json.JsonSerializer.Serialize(new { ok = true, title = t.Title, artist = t.Artist, file = t.File });
+                    code = 200;
+                }
+                catch (Exception ex) { json = System.Text.Json.JsonSerializer.Serialize(new { ok = false, error = ex.Message }); code = 400; }
+                var b = Encoding.UTF8.GetBytes(json);
+                ctx.Response.StatusCode = code;
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.ContentLength64 = b.Length;
+                ctx.Response.OutputStream.Write(b, 0, b.Length);
+            }
+            else ctx.Response.StatusCode = 400;
         }
-        else ctx.Response.StatusCode = 400;
-        ctx.Response.Close();
+        finally { ctx.Response.Close(); }
     }
 
     private async Task HandleClientAsync(HttpListenerContext ctx)
@@ -251,16 +274,14 @@ public sealed class HostServer : IAsyncDisposable
                 break;
 
             case Cmd c when c.Action == "search":
-                var kw = c.Args?["kw"]?.GetValue<string>() ?? "";
-                if ((_adapter.Caps & AdapterCapability.Search) == 0)
-                {
-                    SendTo(conn, new ErrorFrame { Ref = c.Id, Code = "SEARCH_UNAVAILABLE" });
-                }
-                else
-                {
-                    var hits = await _adapter.Search(kw, _cts.Token);
-                    SendTo(conn, new SearchResults { Ref = c.Id ?? "", Query = kw, Results = hits.ToList() });
-                }
+                var kw = SafeStr(c.Args?["kw"]) ?? "";
+                var results = new List<SearchResultItem>();
+                if ((_adapter.Caps & AdapterCapability.Search) != 0)
+                    results.AddRange(await _adapter.Search(kw, _cts.Token));
+                foreach (var t in _library.Search(kw))
+                    if (!results.Any(r => r.Title == t.Title && r.Artist == t.Artist))
+                        results.Add(new SearchResultItem { Title = t.Title, Artist = t.Artist });
+                SendTo(conn, new SearchResults { Ref = c.Id ?? "", Query = kw, Results = results });
                 break;
 
             case Cmd c when c.Action == "calibrate":

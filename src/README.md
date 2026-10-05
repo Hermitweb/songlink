@@ -11,7 +11,7 @@
 | `SongLink.Host.Core` | net8.0-windows | Protocol, AudioStream | ✅ | HttpListener WebSocket 服务器 + Media Bus + `IPlayerAdapter` + `FakeAdapter` + 鉴权/歌词/封面/重放/组合根 |
 | `SongLink.Host.AudioStream` | net8.0-windows | Protocol, Concentus, NAudio | ✅ | 手机音频串流接收：UDP→Concentus 解 Opus→`IAudioRenderer`(WASAPI/Null) |
 | `SongLink.RemoteSim` | net8.0 | Protocol | ✅ | 命令行扮演安卓遥控端（集成测试/手动验证台） |
-| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream, UiaPick | ✅ | 65 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 + M2 点歌框架 + OCR 匹配 + HMAC 入/出站签名 |
+| `SongLink.Protocol.Tests` | net8.0-windows | Protocol, Host.Core, AudioStream, UiaPick | ✅ | 71 用例：schema 契约 + 组合根 + 鉴权/歌词/封面/重放 + 音频回路 + M2 点歌框架 + OCR 匹配 + HMAC 入/出站签名 + 队列/导入 |
 | `SongLink.Host.Adapters.UiaPick` | net8.0-windows | Protocol, Host.Core, FlaUI | ✅ 编译 | M2 点歌框架：包 inner(SMTC) + UIA 点歌，UIA 读不到时回退 **OCR 兜底**(截图→`OcrPickStrategy` 匹配→点坐标)；`AppDescriptor` 数据驱动，per-app 值需真机校准 |
 | `SongLink.Host.Adapters.Ocr` | net8.0-windows10.0.19041.0 | UiaPick | ⚠ 需开发机（投影 pack） | `MediaOcrEngine`：Windows.Media.Ocr 实现 `IOcrEngine`（BGRA→词+包围盒） |
 | `SongLink.Host.Adapters.Smtc` | net8.0-windows10.0.19041.0 | Protocol, Host.Core | ⚠ 需开发机（Windows 投影 pack） | 真实 SMTC 适配器，实现同一 `IPlayerAdapter` |
@@ -45,6 +45,7 @@ cd SongLink.RemoteSim && dotnet run -- --url ws://localhost:51999/ --pin <上面
 - **协议即契约**：帧类型/字段与 `docs/schema/songlink-frame.schema.json` 一一对应，`SongLink.Protocol.Tests` 每次 `dotnet test` 校验真实发出的帧防漂移。
 - **每帧 HMAC 验签（契约 §6）**：`FrameSigner` 计算/校验 `sig=HMAC-SHA256(key, canonical去sig)`。**入站** `cmd` 用连接 token 验签（`requireFrameSig`/`--require-sig true`，默认关，未签名/错→`AUTH_FAILED`）；**出站**广播帧用 `hostKey`（经 `authResult.hostKey` 下发）签名，客户端 `RemoteSim --verify` 校验。`scripts/sig-smoke.sh` 一键端到端联调。
 - **音频串流并入 Host（架构 §14）**：`SongLink.Host.AudioStream` 的 `AudioStreamSink`（UDP→Concentus 解 Opus→`IAudioRenderer`）由 HostServer 在 `audio:start/stop` 时启停；`setSourceMode(PC_LOCAL)` 会停 sink 交还输出。渲染器可注入——真机 `WasapiRenderer`（→PC 蓝牙/音箱），CI/无声卡用 `NullRenderer` 跑解码回路（本机 47 项含此）。
+- **队列与导入（契约 §3.6，评审 B-1/B-2）**：`PlayQueue` 支撑 `queue.add/remove/top/clear` 并广播 `queue-updated`；`LocalLibrary` 经 HTTP `POST /import?title=&artist=`（body 音频字节）登记并落盘、并入 `search` 结果。播放导入曲需 `LocalSource` 适配器（真机项）。
 
 ## 组合根配置化（评审后续）
 
