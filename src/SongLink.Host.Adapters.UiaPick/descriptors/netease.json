@@ -1,17 +1,20 @@
 {
-  // ⚠ 模板示例：AutomationId/Name 需用 Inspect.exe 对**具体版本**的网易云音乐 PC 端校准。
-  //    网易云 PC 端为 CEF 套壳，UIA 常读不到网页内控件 → 大概率需回退到"截图 OCR + 坐标点击"
-  //    （架构 R2），或降级为"仅传输控制 + 本地音源"。
+  // 网易云音乐 —— 本机未安装，待装后用 UiaProbe dump 校准。
+  //   进程 cloudmusic(已知)。网易云 PC 为 CEF 套壳，UIA 常读不到网页内控件 → 大概率走 OCR 兜底
+  //   (架构 R2)，或降级为"仅传输控制 + 本地音源"。定位字段留 null，需真机校准。
   "appId": "neteasemusic",
   "displayName": "网易云音乐",
   "exeNames": ["cloudmusic"],
   "windowTitleRegex": "网易云音乐",
   "launchPath": null,
   "searchBoxAutomationId": null,
-  "searchBoxName": "搜索",
+  "searchBoxName": null,
   "submitKey": "Enter",
   "resultItemAutomationId": null,
   "resultItemNameRegex": null,
   "doubleClickResult": true,
-  "pickTimeoutMs": 6000
+  "pickTimeoutMs": 6000,
+  "searchBoxPoint": null,
+  "resultRegion": null,
+  "ocrLanguageTag": "zh-Hans"
 }

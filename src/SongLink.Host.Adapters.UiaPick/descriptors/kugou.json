@@ -1,0 +1,23 @@
+{
+  // 酷狗音乐 —— 本机已用 computer-use 探测(2026-10-05)：
+  //   主进程 KuGou；主播放窗 UIA 树近乎空(仅任务栏歌词浮层暴露 Custom+按钮)，
+  //   搜索框/歌单为 CEF/自绘，未进 UIA → UIA 点歌不可用，须走 OCR 兜底(架构 R2)。
+  //   searchBoxPoint 为屏幕物理像素，需按实际分辨率校准(截图中搜索框位于窗口顶部居中)。
+  "appId": "kugou",
+  "displayName": "酷狗音乐",
+  "exeNames": ["KuGou"],
+  "windowTitleRegex": "酷狗音乐",
+  "launchPath": null,
+
+  "searchBoxAutomationId": null,
+  "searchBoxName": null,
+  "submitKey": "Enter",
+  "resultItemAutomationId": null,
+  "resultItemNameRegex": null,
+  "doubleClickResult": true,
+  "pickTimeoutMs": 6000,
+
+  "searchBoxPoint": [470, 61],
+  "resultRegion": [300, 120, 700, 480],
+  "ocrLanguageTag": "zh-Hans"
+}

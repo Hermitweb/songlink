@@ -1,0 +1,20 @@
+{
+  // 汽水音乐（字节跳动）—— 本机未安装，待装后用 UiaProbe dump 校准。
+  //   进程名待确认(候选 qsmusic / 汽水音乐)。较新的 Electron/自绘客户端，UIA 大概率读不到控件
+  //   → 预期走 OCR 兜底。定位字段留 null，需真机校准。
+  "appId": "qishui",
+  "displayName": "汽水音乐",
+  "exeNames": ["qsmusic", "QishuiMusic"],
+  "windowTitleRegex": "汽水音乐",
+  "launchPath": null,
+  "searchBoxAutomationId": null,
+  "searchBoxName": null,
+  "submitKey": "Enter",
+  "resultItemAutomationId": null,
+  "resultItemNameRegex": null,
+  "doubleClickResult": true,
+  "pickTimeoutMs": 6000,
+  "searchBoxPoint": null,
+  "resultRegion": null,
+  "ocrLanguageTag": "zh-Hans"
+}

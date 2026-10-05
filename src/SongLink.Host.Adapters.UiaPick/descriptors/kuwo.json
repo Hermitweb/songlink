@@ -1,0 +1,20 @@
+{
+  // 酷我音乐 —— 本机未安装，待装后用 UiaProbe dump 校准。
+  //   进程名待确认(常见候选 kuwomusic / KwPlayer)。酷我 PC 亦为 CEF/自绘混合，
+  //   UIA 可能读不到控件 → 优先试 UIA，失败走 OCR 兜底。定位字段留 null，需真机校准。
+  "appId": "kuwo",
+  "displayName": "酷我音乐",
+  "exeNames": ["kuwomusic", "KwPlayer"],
+  "windowTitleRegex": "酷我音乐",
+  "launchPath": null,
+  "searchBoxAutomationId": null,
+  "searchBoxName": null,
+  "submitKey": "Enter",
+  "resultItemAutomationId": null,
+  "resultItemNameRegex": null,
+  "doubleClickResult": true,
+  "pickTimeoutMs": 6000,
+  "searchBoxPoint": null,
+  "resultRegion": null,
+  "ocrLanguageTag": "zh-Hans"
+}
