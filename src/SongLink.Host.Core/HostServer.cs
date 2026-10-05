@@ -20,6 +20,7 @@ public sealed class HostServer : IAsyncDisposable
     private readonly IPlayerAdapter _adapter;
     private readonly LyricService _lyric = new();
     private readonly ArtStore _art = new();
+    private readonly PlayQueue _queue = new();
     private readonly AuthManager _auth;
     private readonly string _hostKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     private readonly ReplayBuffer _replay = new();
@@ -243,6 +244,12 @@ public sealed class HostServer : IAsyncDisposable
                 Broadcast(new EventFrame { Name = "source-mode-changed", Mode = _bus.SourceMode });
                 break;
 
+            case Cmd c when c.Action.StartsWith("queue."):
+                bool qOk = HandleQueue(c);
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = qOk });
+                if (qOk) Broadcast(BuildQueueEvent());
+                break;
+
             case Cmd c when c.Action == "search":
                 var kw = c.Args?["kw"]?.GetValue<string>() ?? "";
                 if ((_adapter.Caps & AdapterCapability.Search) == 0)
@@ -353,6 +360,40 @@ public sealed class HostServer : IAsyncDisposable
         try { return node?.GetValue<string>(); } catch { return null; }
     }
 
+    private static int? SafeInt(System.Text.Json.Nodes.JsonNode? node)
+    {
+        if (node is null) return null;
+        try { return node.GetValue<int>(); }
+        catch { return int.TryParse(node.ToString(), out var v) ? v : null; }
+    }
+
+    /// <summary>处理 queue.* 命令（契约 §3.6）。返回是否成功。</summary>
+    private bool HandleQueue(Cmd c)
+    {
+        switch (c.Action)
+        {
+            case "queue.add":
+                _queue.Add(SafeStr(c.Args?["title"]) ?? "", SafeStr(c.Args?["artist"]) ?? "", SafeStr(c.Args?["by"]) ?? "remote");
+                return true;
+            case "queue.remove":
+                var ri = SafeInt(c.Args?["index"]); return ri is not null && _queue.RemoveAt(ri.Value);
+            case "queue.top":
+                var ti = SafeInt(c.Args?["index"]); return ti is not null && _queue.Top(ti.Value);
+            case "queue.clear":
+                _queue.Clear(); return true;
+            default:
+                return false;
+        }
+    }
+
+    private EventFrame BuildQueueEvent()
+    {
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        foreach (var it in _queue.Snapshot())
+            arr.Add(new System.Text.Json.Nodes.JsonObject { ["title"] = it.Title, ["artist"] = it.Artist, ["by"] = it.By });
+        return new EventFrame { Name = "queue-updated", Queue = arr };
+    }
+
     /// <summary>每连接唯一的发送循环：串行、按序把出箱帧写到 socket（seq 已在入队时于锁内赋好）。</summary>
     private async Task SendLoopAsync(ClientConn conn)
     {
@@ -376,8 +417,16 @@ public sealed class HostServer : IAsyncDisposable
         foreach (var conn in _clients.Values) conn.Outbox.Writer.TryComplete();
         foreach (var conn in _clients.Values)
         {
-            try { if (conn.Socket.State == WebSocketState.Open) await conn.Socket.CloseAsync(WebSocketCloseStatus.NormalClosure, "bye", CancellationToken.None); }
-            catch { }
+            // CloseOutputAsync + 超时：只发出 close，不等对端回应，避免 testhost 挂起
+            try
+            {
+                if (conn.Socket.State == WebSocketState.Open)
+                {
+                    using var closeCts = new CancellationTokenSource(TimeSpan.FromMilliseconds(500));
+                    await conn.Socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, "bye", closeCts.Token);
+                }
+            }
+            catch { /* 超时/已断，忽略 */ }
         }
         _listener.Stop();
         if (_acceptLoop is not null) { try { await _acceptLoop; } catch { } }
