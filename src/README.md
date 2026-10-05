@@ -15,6 +15,9 @@
 | `SongLink.Host.Adapters.UiaPick` | net8.0-windows | Protocol, Host.Core, FlaUI | ✅ 编译 | M2 点歌框架：包 inner(SMTC) + UIA 点歌，UIA 读不到时回退 **OCR 兜底**(截图→`OcrPickStrategy` 匹配→点坐标)；`AppDescriptor` 数据驱动，per-app 值需真机校准 |
 | `SongLink.Host.Adapters.Ocr` | net8.0-windows10.0.19041.0 | UiaPick | ⚠ 需开发机（投影 pack） | `MediaOcrEngine`：Windows.Media.Ocr 实现 `IOcrEngine`（BGRA→词+包围盒） |
 | `SongLink.Host.Adapters.Smtc` | net8.0-windows10.0.19041.0 | Protocol, Host.Core | ⚠ 需开发机（Windows 投影 pack） | 真实 SMTC 适配器，实现同一 `IPlayerAdapter` |
+| `SongLink.Tools.UiaProbe` | net8.0-windows | FlaUI | ✅ 编译（枚举需交互桌面） | M2 校准工具：`list`/`dump <app>` 打印窗口 UIA 树，辅助写 `AppDescriptor` |
+
+> M2 逐 App 点歌校准流程见 `../docs/M2-点歌校准手册.md`（UiaProbe 驱动，需装了目标 App 的交互式桌面）。
 
 ## 本机已实测
 

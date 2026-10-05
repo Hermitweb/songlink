@@ -29,6 +29,7 @@ jobs:
           dotnet test src/SongLink.Protocol.Tests/SongLink.Protocol.Tests.csproj -c Release --logger "trx;LogFileName=core.trx"
           dotnet build src/SongLink.Host.AudioStream/SongLink.Host.AudioStream.csproj -c Release
           dotnet build src/SongLink.Host.Adapters.UiaPick/SongLink.Host.Adapters.UiaPick.csproj -c Release
+          dotnet build src/SongLink.Tools.UiaProbe/SongLink.Tools.UiaProbe.csproj -c Release
           dotnet build src/SongLink.RemoteSim/SongLink.RemoteSim.csproj -c Release
 
       # HMAC 端到端签名联调：起 requireFrameSig Host + RemoteSim --sign --verify，断言入站验签/出站签名通过
