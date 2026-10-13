@@ -4,6 +4,7 @@ import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import songlink.remote.data.audio.PhoneAudioCapturer
 
 /**
  * [PacketFramer] 与 C# [SongLink.Host.AudioStream.AudioStreamWire] 字节对齐合约测试。
@@ -96,4 +97,17 @@ class PacketFramerTest {
     }
 
     private fun byteAtAsInt(b: Byte): Int = b.toInt() and 0xFF
+
+    /**
+     * 跨语言合约：C# [SongLink.Host.AudioStream.AudioStreamWire.FlagRawPcm] = 0x04 与本常量一致。
+     * Host 端按 flags & 0x04 != 0 判定走 PCM 直通分支，绕过 OpusCodec 解码。
+     */
+    @Test
+    fun raw_pcm_flag_matches_csharp_constant() {
+        assertEquals(0x04, PhoneAudioCapturer.FLAG_PCM_RAW)
+        // 验证位掩码语义（bit2 唯一开启，bit0/1/3 等保持 0）
+        assertEquals(0x04, PhoneAudioCapturer.FLAG_PCM_RAW and 0x04)
+        assertEquals(0, PhoneAudioCapturer.FLAG_PCM_RAW and 0x01)
+        assertEquals(0, PhoneAudioCapturer.FLAG_PCM_RAW and 0x02)
+    }
 }

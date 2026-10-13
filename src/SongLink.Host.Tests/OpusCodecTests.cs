@@ -243,4 +243,108 @@ public class AudioStreamSinkTests
         // §4 解析抛 → 被 catch 计入 DecodeErrors
         Assert.True(sink.DecodeErrors >= 1);
     }
+
+    /// <summary>Android 端 16-bit LE PCM 直通：flags bit2 = <see cref="AudioStreamWire.FlagRawPcm"/>。
+    /// 这是 Android PhoneAudioCapturer 当前发送的唯一形态——OpusCodec 不参与，整路径直通。</summary>
+    [Fact]
+    public async Task Sink_passes_raw_pcm_through_when_flag_bit2_set()
+    {
+        using var codec = new OpusCodec(sampleRate: 48_000, channels: 2, bitrateBps: 96_000, frameMs: 20);
+        var renderer = new NullRenderer();
+        using var sink = new AudioStreamSink(codec, renderer, port: 0);
+        sink.Start();
+
+        // PCM 载荷：单声道 48 kHz / 20 ms = 960 sample = 1920 byte（Android 端约定值）。
+        var pcmBytes = new byte[1920];
+        for (int i = 0; i < 960; i++)
+        {
+            short v = (short)(System.Math.Sin(2 * Math.PI * 440.0 * i / 48_000.0) * 16_000);
+            pcmBytes[2 * i]     = (byte)(v & 0xFF);
+            pcmBytes[2 * i + 1] = (byte)((v >> 8) & 0xFF);
+        }
+
+        var frame = AudioStreamWire.Assemble(
+            flags: (byte)(AudioStreamWire.FlagFirst | AudioStreamWire.FlagLast | AudioStreamWire.FlagRawPcm),
+            seq: 1u,
+            pts: 48_000UL,
+            opusFrame: pcmBytes);
+
+        using var sender = new System.Net.Sockets.UdpClient(0);
+        await sender.SendAsync(frame, new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, sink.LocalPort));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline && sink.FramesPcmPassthrough < 1)
+            await Task.Delay(20);
+
+        Assert.True(sink.FramesPcmPassthrough >= 1, $"应至少 1 帧 PCM 直通，实际 {sink.FramesPcmPassthrough}");
+        Assert.Equal(AudioStreamSink.RenderMode.RawPcmPassthrough, sink.ActiveMode);
+        Assert.Equal(960, renderer.SamplesWritten);
+        Assert.Equal(0, sink.DecodeErrors);
+    }
+
+    /// <summary>PCM 直通载荷字节数不是 2 的倍数 → 计入 DecodeErrors、不崩循环。</summary>
+    [Fact]
+    public async Task Sink_counts_pcm_malformed_payload_as_decode_error()
+    {
+        using var codec = new OpusCodec(sampleRate: 48_000, channels: 1, bitrateBps: 96_000, frameMs: 20);
+        var renderer = new NullRenderer();
+        using var sink = new AudioStreamSink(codec, renderer, port: 0);
+        sink.Start();
+
+        var bad = new byte[5];   // 奇数长度 → 应抛 InvalidOperationException
+        var frame = AudioStreamWire.Assemble(
+            flags: AudioStreamWire.FlagRawPcm,
+            seq: 1u,
+            pts: 0,
+            opusFrame: bad);
+
+        using var sender = new System.Net.Sockets.UdpClient(0);
+        await sender.SendAsync(frame, new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, sink.LocalPort));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline && sink.DecodeErrors < 1)
+            await Task.Delay(20);
+
+        Assert.True(sink.DecodeErrors >= 1);
+        Assert.Equal(0, sink.FramesPcmPassthrough);
+    }
+
+    /// <summary>首帧是 Opus、后续切到 PCM——锁死后不再切换，确保 WASAPI 不会在 48k/1ch/48k/2ch 之间跳。</summary>
+    [Fact]
+    public async Task Sink_locks_mode_after_first_frame()
+    {
+        using var codec = new OpusCodec(sampleRate: 16_000, channels: 1, bitrateBps: 32_000, frameMs: 20);
+        var renderer = new NullRenderer();
+        using var sink = new AudioStreamSink(codec, renderer, port: 0);
+        sink.Start();
+
+        // 第 1 帧：Opus（16 sample/通道）
+        var pcm1 = new short[320];   // 16k * 20ms = 320 sample/通道
+        for (int i = 0; i < pcm1.Length; i++) pcm1[i] = (short)i;
+        var opus1 = codec.Encode(pcm1);
+        var f1 = AudioStreamWire.Assemble(
+            flags: (byte)(AudioStreamWire.FlagFirst | AudioStreamWire.FlagLast),
+            seq: 1u, pts: 16_000UL, opusFrame: opus1);
+
+        // 第 2 帧：PCM 直通（伪造 1920 B，单声道 48 kHz 帧大小）
+        var pcm2 = new byte[1920];
+        var f2 = AudioStreamWire.Assemble(
+            flags: (byte)(AudioStreamWire.FlagFirst | AudioStreamWire.FlagLast | AudioStreamWire.FlagRawPcm),
+            seq: 2u, pts: 32_000UL, opusFrame: pcm2);
+
+        using var sender = new System.Net.Sockets.UdpClient(0);
+        await sender.SendAsync(f1, new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, sink.LocalPort));
+        await sender.SendAsync(f2, new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, sink.LocalPort));
+
+        var deadline = DateTime.UtcNow.AddSeconds(2);
+        while (DateTime.UtcNow < deadline && sink.FramesDecoded < 2)
+            await Task.Delay(20);
+
+        // 模式应锁在 Opus：第 2 帧被"忽略"（即应跳过，避免 WASAPI 切采样率）
+        Assert.Equal(AudioStreamSink.RenderMode.OpusDecoded, sink.ActiveMode);
+        Assert.Equal(0, sink.FramesPcmPassthrough);
+        // 但 DecodeErrors 应+1 或 keep=1，因为它会被 raw-pcm 分支拒绝
+        Assert.True(sink.DecodeErrors >= 1 || sink.FramesPcmPassthrough == 1,
+            $"模式锁后, raw-pcm 帧应被丢弃: PCM={sink.FramesPcmPassthrough}, Err={sink.DecodeErrors}");
+    }
 }

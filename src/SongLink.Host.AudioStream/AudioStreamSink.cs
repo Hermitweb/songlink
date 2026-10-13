@@ -27,16 +27,26 @@ public sealed class AudioStreamSink : IDisposable
 
     private long _framesReceived;
     private long _framesDecoded;
+    private long _framesPcmPassthrough;
     private long _decodeErrors;
 
     /// <summary>已接收帧计数（不论解码成败）。</summary>
     public long FramesReceived => System.Threading.Interlocked.Read(ref _framesReceived);
 
-    /// <summary>已成功解码并送入渲染器的帧计数。</summary>
+    /// <summary>已成功解码并送入渲染器的帧计数（含 Opus 解码和 PCM 直通两条路径）。</summary>
     public long FramesDecoded => System.Threading.Interlocked.Read(ref _framesDecoded);
 
-    /// <summary>解码失败次数（用于区分健康度）。</summary>
+    /// <summary>PCM 直通模式帧计数（flags bit2=1，未经 OpusCodec）。</summary>
+    public long FramesPcmPassthrough => System.Threading.Interlocked.Read(ref _framesPcmPassthrough);
+
+    /// <summary>解码/处理失败次数（用于区分健康度）。</summary>
     public long DecodeErrors => System.Threading.Interlocked.Read(ref _decodeErrors);
+
+    /// <summary>当前激活的渲染模式（基于收到的首帧 flags bit2 判定，启动后不可变）；
+    /// null = 还未收到任何帧，沿用 OpusCodec 默认值启动渲染器。</summary>
+    public RenderMode? ActiveMode { get; private set; }
+
+    public enum RenderMode { OpusDecoded, RawPcmPassthrough }
 
     public AudioStreamSink(OpusCodec codec, IAudioRenderer renderer, int port = 0)
     {
@@ -88,11 +98,31 @@ public sealed class AudioStreamSink : IDisposable
                     var frame = AudioStreamWire.Parse(datagram);
                     if (frame.Version != AudioStreamWire.WireVersion) continue;
 
-                    var pcm = _codec.Decode(frame.Payload.Span);
+                    bool isRawPcm = (frame.Flags & AudioStreamWire.FlagRawPcm) != 0;
+
+                    // 模式锁定：发现帧类型与首帧不一致 → 计入 DecodeErrors 并跳过（不接 metric）
+                    if (ActiveMode is { } locked &&
+                        ((locked == RenderMode.OpusDecoded && isRawPcm) ||
+                         (locked == RenderMode.RawPcmPassthrough && !isRawPcm)))
+                    {
+                        System.Threading.Interlocked.Increment(ref _decodeErrors);
+                        System.Console.Error.WriteLine(
+                            $"[audio] 模式锁定={locked}, 但收到 isRawPcm={isRawPcm} 的帧, 跳过");
+                        continue;
+                    }
+
+                    var pcm = isRawPcm
+                        ? DecodeRawPcm(frame.Payload.Span)
+                        : _codec.Decode(frame.Payload.Span);
                     if (pcm.Length == 0) continue;
+
+                    // 首次遇到 PCM 直通帧时把渲染器按 PCM 重新拉起（Android 端送 48k/mono，
+                    // 而 OpusCodec 配置可能不同）。一旦确定模式就锁死。
+                    EnsureRendererFor(isRawPcm);
 
                     _renderer.WriteShort(pcm);
                     System.Threading.Interlocked.Increment(ref _framesDecoded);
+                    if (isRawPcm) System.Threading.Interlocked.Increment(ref _framesPcmPassthrough);
                 }
                 catch (Exception ex)
                 {
@@ -112,6 +142,38 @@ public sealed class AudioStreamSink : IDisposable
     public void Stop()
     {
         _renderer.Stop();
+    }
+
+    private void EnsureRendererFor(bool rawPcm)
+    {
+        var target = rawPcm ? RenderMode.RawPcmPassthrough : RenderMode.OpusDecoded;
+        if (ActiveMode is { } current && current != target) return;   // 模式锁死后不再切换
+        if (ActiveMode is null)
+        {
+            // 首次按真实负载类型重置渲染器——避免 48k/2ch Opus 渲染器上灌 48k/1ch PCM
+            _renderer.Start(
+                sampleRate: rawPcm ? AudioStreamWire.RawPcmSampleRate : _codec.SampleRate,
+                channels:   rawPcm ? AudioStreamWire.RawPcmChannels   : _codec.Channels);
+            ActiveMode = target;
+        }
+    }
+
+    private static short[] DecodeRawPcm(ReadOnlySpan<byte> payload)
+    {
+        // Android 端 ENCODING_PCM_16BIT = little-endian 16-bit signed PCM；
+        // 字节数必须是 2 的倍数；按 short[] 直接拷贝（小端机器上 layout 一致，Intel x86 / x64 不需要 swap）。
+        if ((payload.Length & 1) != 0) throw new InvalidOperationException($"PCM 载荷长度必须是 2 的倍数, 实际 {payload.Length}");
+        var samples = new short[payload.Length / 2];
+        if (BitConverter.IsLittleEndian)
+        {
+            Buffer.BlockCopy(payload.ToArray(), 0, samples, 0, payload.Length);
+        }
+        else
+        {
+            for (int i = 0; i < samples.Length; i++)
+                samples[i] = (short)((payload[2 * i]) | (payload[2 * i + 1] << 8));
+        }
+        return samples;
     }
 
     public void Dispose()

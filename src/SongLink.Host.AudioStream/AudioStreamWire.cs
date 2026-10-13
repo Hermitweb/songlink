@@ -21,6 +21,14 @@ public static class AudioStreamWire
 
     public const byte FlagFirst = 0b0000_0001;   // bit0
     public const byte FlagLast  = 0b0000_0010;   // bit1
+    /// <summary>Android 端占位使用：flags bit2 = 1 表示载荷为裸 16-bit PCM（绕过 OpusCodec），
+    /// 与 mobile/android-remote/.../data/audio/PhoneAudioCapturer.kt::FLAG_PCM_RAW 同值。
+    /// 未来 libopus JNI 接入后可设 bit2=0 走真实 Opus 编码。</summary>
+    public const byte FlagRawPcm = 0b0000_0100;   // bit2
+
+    /// <summary>裸 PCM 直通模式常量（48 kHz / 单声道 / 16-bit LE）——与 Android PhoneAudioCapturer 对齐。</summary>
+    public const int RawPcmSampleRate = 48_000;
+    public const int RawPcmChannels = 1;
 
     private const int HeaderSize = 1 + 1 + 4 + 8 + 2;   // 16 字节
 
