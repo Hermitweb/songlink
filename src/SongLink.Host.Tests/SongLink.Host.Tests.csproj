@@ -23,6 +23,7 @@
     <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
     <ProjectReference Include="..\SongLink.Host.Core\Benchmarks\SongLink.Host.Core.Benchmarks.csproj" />
     <ProjectReference Include="..\SongLink.Host.AudioStream\SongLink.Host.AudioStream.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Adapters.LocalSource\SongLink.Host.Adapters.LocalSource.csproj" />
   </ItemGroup>
 
   <ItemGroup>
