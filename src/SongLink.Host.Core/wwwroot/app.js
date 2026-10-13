@@ -8,8 +8,9 @@
   let lines = [];
   let lineIdx = -1;
   let queue = [];
-  let queueIdx = -1;     // 当前在播的 index
+  let queueIdx = -1;
   let queueShuffled = false;
+  let history = [];
   let pinCode = (new URLSearchParams(location.search).get('pin') || '').trim();
   let userName = localStorage.getItem('songlink.user') || '';
   let searchRef = 0;
@@ -21,6 +22,16 @@
   const uuid = () => 'web-' + Math.random().toString(36).slice(2, 10);
   const esc = s => (s || '').replace(/[<>&"']/g, c => ({ '<': '<', '>': '>', '&': '&', '"': '"', "'": '&#39;' }[c]));
   const who = () => (userName || '').trim() || '匿名';
+
+  // Toast (3s auto-hide)
+  function toast(msg, kind) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.className = 'toast ' + (kind || '');
+    el.hidden = false;
+    clearTimeout(toast._t);
+    toast._t = setTimeout(() => { el.hidden = true; }, 2500);
+  }
 
   function setConn(state) {
     const el = $('conn');
@@ -56,7 +67,9 @@
     $('queue-empty').style.display = 'none';
     $('queue-list').innerHTML = queue.map((it, i) => {
       const cls = i === queueIdx ? ' current' : (queueIdx > i ? ' played' : '');
-      return `<li class="${cls.trim()}" data-i="${i}">
+      const draggable = queue.length > 1 ? ' draggable="true"' : '';
+      return `<li class="${cls.trim()}" data-i="${i}"${draggable}>
+        <span class="handle" title="拖动排序">⇅</span>
         <span class="idx">${i + 1}.</span>
         <div class="info">
           <span class="t">${esc(it.title || '(无标题)')}</span>
@@ -86,6 +99,23 @@
          <span class="t">${esc(r.title)}</span><span class="a">${esc(r.artist || '')}</span>
          <button class="add" data-act="add" data-t="${esc(r.title)}" data-a="${esc(r.artist || '')}">⏩ 加入队列</button>
        </div>`).join('');
+  }
+
+  function renderHistory() {
+    $('hcount').textContent = `(${history.length})`;
+    if (!history.length) { $('history-list').innerHTML = ''; $('history-empty').style.display = ''; return; }
+    $('history-empty').style.display = 'none';
+    $('history-list').innerHTML = history.map((h, i) => {
+      const when = h.playedAt ? new Date(h.playedAt).toLocaleString('zh-CN', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '';
+      return `<li>
+        <div class="info">
+          <span class="t">${esc(h.title || '(无标题)')}</span>
+          <span class="a">${esc(h.artist || '')}</span>
+          <span class="when">${when}</span>
+        </div>
+        <button class="add" data-act="play" data-t="${esc(h.title)}" data-a="${esc(h.artist || '')}">▶ 再听</button>
+      </li>`;
+    }).join('');
   }
 
   function tick() {
@@ -138,13 +168,12 @@
         if (f.ok) {
           setConn('connected');
           $('pin-wrap').hidden = true;
-          // 拉首屏数据:队列 + 热门 + 当前曲歌词
           send({ type: 'cmd', id: uuid(), action: 'trending', args: { limit: 24 } });
-          trendingRef = 'first';
+          send({ type: 'cmd', id: uuid(), action: 'history.list', args: { limit: 20 } });
           if (cur.title && cur.artist) requestLyric();
         } else {
           setConn('disconnected');
-          alert('鉴权失败: ' + (f.code || 'AUTH_FAILED'));
+          toast('鉴权失败: ' + (f.code || 'AUTH_FAILED'), 'error');
         }
         break;
       case 'state':
@@ -172,10 +201,15 @@
         if (f.name === 'source-mode-changed') cur.sourceMode = f.mode || '';
         if (f.name === 'queue-shuffled') queueShuffled = true;
         if (f.name === 'queue-unshuffled') queueShuffled = false;
+        if (f.name === 'history-list') {
+          history = (f.queue || []).slice();   // 历史也用 Queue 字段携带 (JSON 数组)
+          renderHistory();
+        }
         renderNow();
         break;
       case 'error':
-        console.warn('server error', f);
+        if (f.code === 'DUPLICATE') toast(f.hint || '已在队列中', 'error');
+        else console.warn('server error', f);
         break;
     }
   }
@@ -199,6 +233,7 @@
   };
   $('kw').addEventListener('keydown', e => { if (e.key === 'Enter') $('btn-search').click(); });
   $('user').addEventListener('change', e => { userName = e.target.value.trim(); localStorage.setItem('songlink.user', userName); });
+  $('btn-hreload').onclick = () => send({ type: 'cmd', id: uuid(), action: 'history.list', args: { limit: 20 } });
 
   // 队列操作委托
   $('queue-list').addEventListener('click', e => {
@@ -206,6 +241,35 @@
     const i = parseInt(btn.dataset.i, 10);
     if (btn.dataset.act === 'top') send({ type: 'cmd', id: uuid(), action: 'queue.top', args: { index: i } });
     else if (btn.dataset.act === 'remove') send({ type: 'cmd', id: uuid(), action: 'queue.remove', args: { index: i } });
+  });
+
+  // 队列 HTML5 drag&drop 排序
+  let dragSrcIdx = -1;
+  $('queue-list').addEventListener('dragstart', e => {
+    const li = e.target.closest('li'); if (!li) return;
+    dragSrcIdx = parseInt(li.dataset.i, 10);
+    li.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(dragSrcIdx));
+  });
+  $('queue-list').addEventListener('dragend', e => {
+    const li = e.target.closest('li'); if (li) li.classList.remove('dragging');
+    document.querySelectorAll('.queue li.drag-over').forEach(x => x.classList.remove('drag-over'));
+    dragSrcIdx = -1;
+  });
+  $('queue-list').addEventListener('dragover', e => {
+    e.preventDefault();
+    const li = e.target.closest('li'); if (!li) return;
+    document.querySelectorAll('.queue li.drag-over').forEach(x => x.classList.remove('drag-over'));
+    li.classList.add('drag-over');
+  });
+  $('queue-list').addEventListener('drop', e => {
+    e.preventDefault();
+    const li = e.target.closest('li'); if (!li) return;
+    li.classList.remove('drag-over');
+    const to = parseInt(li.dataset.i, 10);
+    if (dragSrcIdx < 0 || dragSrcIdx === to) return;
+    send({ type: 'cmd', id: uuid(), action: 'queue.move', args: { from: dragSrcIdx, to } });
   });
 
   // 搜索结果点击 = 立即播放 / ⏩ 按钮 = 加入队列
@@ -216,6 +280,14 @@
     const t = hit.dataset.t, a = hit.dataset.a;
     if (btn) send({ type: 'cmd', id: uuid(), action: 'queue.add', args: { title: t, artist: a, by: who() } });
     else send({ type: 'cmd', id: uuid(), action: 'pick', args: { title: t, artist: a } });
+  });
+
+  // 历史再听
+  $('history-list').addEventListener('click', e => {
+    const btn = e.target.closest('button.add');
+    const li = e.target.closest('li');
+    if (!btn || !li) return;
+    send({ type: 'cmd', id: uuid(), action: 'pick', args: { title: btn.dataset.t, artist: btn.dataset.a } });
   });
 
   // 热门点击 = 加入队列
@@ -231,6 +303,6 @@
   if (pinCode) connect(pinCode);
   else $('pin-wrap').hidden = false;
   setConn('disconnected');
-  renderNow(); renderQueue(); renderLyrics();
+  renderNow(); renderQueue(); renderLyrics(); renderHistory();
   tick();
 })();

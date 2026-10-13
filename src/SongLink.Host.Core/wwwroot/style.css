@@ -1,4 +1,4 @@
-/* SongLink 点歌台 — dark theme,信息密度中等 */
+/* SongLink 点歌台 — dark theme */
 * { box-sizing: border-box; }
 body {
   margin: 0;
@@ -80,29 +80,37 @@ main {
 #lyrics .line.active { color: #e6e6e6; background: #2a3a5a; font-weight: 600; }
 #lyrics .line.passed { color: #555; }
 
-#queue-section, #trending-section, #search {
+#queue-section, #trending-section, #search, #history-section {
   background: #1a1d24; padding: 16px; border-radius: 8px;
 }
 .row { display: flex; gap: 8px; align-items: center; }
-#queue-section .row { justify-content: space-between; margin-bottom: 10px; }
-#queue-section .row h2 { margin: 0; }
-#queue-section .actions { display: flex; gap: 6px; }
-.queue, .results { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
-.queue li, .results .hit {
+#queue-section .row, #history-section .row { justify-content: space-between; margin-bottom: 10px; }
+#queue-section .row h2, #history-section .row h2 { margin: 0; }
+#queue-section .actions, #history-section .actions { display: flex; gap: 6px; }
+.queue, .results, .history { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+.queue li, .results .hit, .history li {
   display: flex; align-items: center; gap: 8px;
   padding: 8px 10px;
   background: #2a2e38; border-radius: 4px;
 }
+/* 队列拖拽视觉反馈 */
+.queue li.dragging { opacity: 0.4; }
+.queue li.drag-over { border-top: 2px solid #4a90e2; }
+.queue .handle { color: #606060; cursor: grab; font-size: 14px; padding: 0 4px; }
+.queue .handle:active { cursor: grabbing; }
 .queue li.current { background: #2a3a5a; border-left: 3px solid #4a90e2; }
 .queue li.played { opacity: 0.5; }
 .queue .idx { width: 24px; color: #707070; font-size: 12px; }
-.queue .info { flex: 1; min-width: 0; }
-.queue .t { font-weight: 600; }
-.queue .a, .queue .by { color: #a0a0a0; font-size: 12px; margin-left: 8px; }
-.queue .by { font-size: 11px; color: #707070; }
+.queue .info, .history .info { flex: 1; min-width: 0; }
+.queue .t, .history .t { font-weight: 600; }
+.queue .a, .history .a, .queue .by, .history .by { color: #a0a0a0; font-size: 12px; margin-left: 8px; }
+.queue .by, .history .by { font-size: 11px; color: #707070; }
 .queue .ops { display: flex; gap: 4px; }
 .queue .ops button { padding: 2px 8px; font-size: 11px; }
-#queue-empty { color: #707070; text-align: center; padding: 20px; }
+#queue-empty, #history-empty { color: #707070; text-align: center; padding: 20px; }
+.history li { padding: 6px 10px; }
+.history .when { color: #707070; font-size: 11px; font-variant-numeric: tabular-nums; }
+.history .add { padding: 2px 10px; font-size: 11px; }
 
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chips .chip {
@@ -117,3 +125,13 @@ main {
 .results .hit .t { font-weight: 600; }
 .results .hit .a { color: #a0a0a0; font-size: 12px; margin-left: 8px; }
 .results .hit .add { margin-left: auto; padding: 2px 10px; font-size: 11px; }
+
+/* Toast */
+.toast {
+  position: fixed; top: 16px; left: 50%; transform: translateX(-50%);
+  background: #2a2e38; color: #e6e6e6; padding: 10px 20px;
+  border-radius: 6px; box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  z-index: 999; font-size: 14px; max-width: 80%;
+}
+.toast.error { background: #5a3030; color: #ffd4d4; }
+.toast.ok { background: #1e6e3a; color: #d4f5dc; }

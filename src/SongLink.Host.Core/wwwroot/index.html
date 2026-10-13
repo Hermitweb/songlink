@@ -7,6 +7,8 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+<div id="toast" class="toast" hidden></div>
+
 <header>
   <h1>🎤 SongLink 点歌台</h1>
   <div id="conn" class="badge disconnected">未连接</div>
@@ -20,7 +22,6 @@
 </header>
 
 <main>
-  <!-- 当前歌曲 -->
   <section id="now">
     <div class="art">
       <img id="art" alt="" src="" onerror="this.style.display='none'">
@@ -38,22 +39,19 @@
     </div>
   </section>
 
-  <!-- 控件 -->
   <section class="controls">
     <button id="btn-prev" title="上一首">⏮</button>
     <button id="btn-play" title="播放/暂停" class="primary">▶</button>
     <button id="btn-next" title="下一首">⏭</button>
   </section>
 
-  <!-- 歌词 -->
   <section id="lyrics">
     <div class="empty">歌词加载中…</div>
   </section>
 
-  <!-- 点歌队列 -->
   <section id="queue-section">
     <div class="row">
-      <h2>📜 点歌队列 <span id="qcount" class="muted">(0)</span></h2>
+      <h2>📜 点歌队列 <span id="qcount" class="muted">(0)</span> <span class="muted">拖拽 ⇅ 排序</span></h2>
       <div class="actions">
         <button id="btn-shuffle" class="ghost" title="随机打乱">🎲 打乱</button>
         <button id="btn-qclear" class="ghost danger" title="清空队列">🗑 清空</button>
@@ -63,20 +61,31 @@
     <div id="queue-empty" class="empty">队列空 — 搜索或从热门区点歌</div>
   </section>
 
-  <!-- 热门 -->
   <section id="trending-section">
     <h2>🔥 热门 <span class="muted">(点击 = 加入队列)</span></h2>
     <div id="trending" class="chips"></div>
   </section>
 
-  <!-- 搜索 -->
   <section id="search">
-    <h2>🔍 搜索 <span class="muted">(结果点击 = 立即播放,带 ⏩ = 加入队列)</span></h2>
+    <div class="row">
+      <h2>🔍 搜索 <span class="muted">(结果点击 = 立即播放,带 ⏩ = 加入队列)</span></h2>
+    </div>
     <div class="row">
       <input id="kw" placeholder="歌名 / 歌手">
       <button id="btn-search">搜</button>
     </div>
     <div id="results" class="results"></div>
+  </section>
+
+  <section id="history-section">
+    <div class="row">
+      <h2>🕒 历史回放 <span id="hcount" class="muted">(0)</span></h2>
+      <div class="actions">
+        <button id="btn-hreload" class="ghost" title="刷新历史">🔄 刷新</button>
+      </div>
+    </div>
+    <ol id="history-list" class="history"></ol>
+    <div id="history-empty" class="empty">暂无历史 — 点过歌之后会出现在这里</div>
   </section>
 </main>
 

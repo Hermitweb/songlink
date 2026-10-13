@@ -191,7 +191,7 @@ components:
       type: object
       properties:
         type: { type: string, enum: [cmd] }
-        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, setSourceMode, calibrate, getLyric, trending] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, queue.move, setSourceMode, calibrate, getLyric, trending, history.list] }
         args: { type: object }";
                 
                 var bytes = Encoding.UTF8.GetBytes(yamlContent);
@@ -395,6 +395,8 @@ components:
             case Cmd c when c.Action.StartsWith("queue."):
                 bool qOk = HandleQueue(c);
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = qOk });
+                if (!qOk && c.Action == "queue.add")
+                    SendTo(conn, new ErrorFrame { Ref = c.Id, Code = "DUPLICATE", Hint = "已在队列中" });
                 if (qOk) Broadcast(BuildQueueEvent());
                 break;
 
@@ -436,6 +438,26 @@ components:
                 if (lyric is not null) SendTo(conn, lyric);
                 break;
 
+            case Cmd c when c.Action == "history.list":
+                // Web 面板「历史回放」用 — 返回最近 N 条 PlayHistory,默认 20,上限 50。
+                int hn = SafeInt(c.Args?["limit"]) ?? 20;
+                if (hn < 1) hn = 20;
+                if (hn > 50) hn = 50;
+                var hist = _library.GetPlayHistory(hn);
+                var arr = new System.Text.Json.Nodes.JsonArray();
+                foreach (var h in hist)
+                {
+                    arr.Add(new System.Text.Json.Nodes.JsonObject
+                    {
+                        ["title"] = h.Title,
+                        ["artist"] = h.Artist,
+                        ["playedAt"] = h.PlayedAt.ToString("o")   // ISO-8601
+                    });
+                }
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                SendTo(conn, new EventFrame { Name = "history-list", Queue = arr });
+                break;
+
             case Cmd c:
                 bool ok = c.Action switch
                 {
@@ -452,6 +474,13 @@ components:
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = ok });
                 if (!ok && c.Action == "pick")
                     SendTo(conn, new ErrorFrame { Ref = c.Id, Code = (_adapter.Caps & AdapterCapability.Pick) == 0 ? "PICK_UNSUPPORTED" : "APP_NOT_FOUND" });
+                // pick 成功 → 自动入播放历史(去重由 LocalLibrary.PlayHistory 倒序 + 50 上限保证)
+                if (ok && c.Action == "pick")
+                {
+                    var t = c.Args?["title"]?.GetValue<string>() ?? "";
+                    var ar = c.Args?["artist"]?.GetValue<string>() ?? "";
+                    if (!string.IsNullOrWhiteSpace(t)) _library.AddPlayHistory(t, ar);
+                }
                 break;
         }
     }
@@ -532,8 +561,16 @@ components:
         switch (c.Action)
         {
             case "queue.add":
-                _queue.Add(SafeStr(c.Args?["title"]) ?? "", SafeStr(c.Args?["artist"]) ?? "", SafeStr(c.Args?["by"]) ?? "remote");
-                return true;
+                {
+                    var title = SafeStr(c.Args?["title"]) ?? "";
+                    var artist = SafeStr(c.Args?["artist"]) ?? "";
+                    var by = SafeStr(c.Args?["by"]) ?? "remote";
+                    // 禁止重复:同 (title, artist) 已在队列里就跳过,Web 面板会显示 toast
+                    if (_queue.Snapshot().Any(x => x.Title == title && x.Artist == artist))
+                        return false;
+                    _queue.Add(title, artist, by);
+                    return true;
+                }
             case "queue.remove":
                 var ri = SafeInt(c.Args?["index"]); return ri is not null && _queue.RemoveAt(ri.Value);
             case "queue.top":
@@ -544,9 +581,20 @@ components:
                 _queue.Shuffle(); return true;
             case "queue.unshuffle":
                 _queue.Unshuffle(); return true;
+            case "queue.move":
+                // 拖拽排序:把 index 从移到 toIndex(支持向上/向下移动)
+                var from = SafeInt(c.Args?["from"]);
+                var to = SafeInt(c.Args?["to"]);
+                return from is not null && to is not null && MoveQueueItem(from.Value, to.Value);
             default:
                 return false;
         }
+    }
+
+    /// <summary>把队列里 fromIndex 移到 toIndex 位置。toIndex 会被夹到 [0, Count-1]。</summary>
+    private bool MoveQueueItem(int fromIndex, int toIndex)
+    {
+        return _queue.Move(fromIndex, toIndex);
     }
 
     /// <summary>流行/热门曲库（兜底,无网络依赖,纯静态预设）。Web 面板「热门」区用。</summary>

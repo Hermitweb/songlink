@@ -167,6 +167,34 @@ public sealed class PlayQueue : IDisposable
         }
     }
 
+    /// <summary>
+    /// 把 fromIndex 位置的项目移到 toIndex(toIndex 会夹到合法区间)。
+    /// 保留 CurrentIndex — 当前在播的歌如果被移动,跟随到新位置。
+    /// </summary>
+    public bool Move(int fromIndex, int toIndex)
+    {
+        lock (_lock)
+        {
+            if (fromIndex < 0 || fromIndex >= _items.Count) return false;
+            if (_items.Count <= 1) return true;
+            if (toIndex < 0) toIndex = 0;
+            if (toIndex >= _items.Count) toIndex = _items.Count - 1;
+            if (fromIndex == toIndex) return true;
+
+            var item = _items[fromIndex];
+            _items.RemoveAt(fromIndex);
+            _items.Insert(toIndex, item);
+
+            // CurrentIndex 跟随:如果当前在播的是被移动的那条,跟随到新位置
+            if (CurrentIndex == fromIndex) CurrentIndex = toIndex;
+            else if (CurrentIndex > fromIndex && CurrentIndex <= toIndex) CurrentIndex--;
+            else if (CurrentIndex < fromIndex && CurrentIndex >= toIndex) CurrentIndex++;
+
+            Changed?.Invoke(new QueueChangedEventArgs { EventName = "moved", Index = toIndex, Item = item });
+            return true;
+        }
+    }
+
     /// <summary>自动播放下一首（用于队列播放完毕或手动切歌）</summary>
     public QueueItem? GetNextSong()
     {
