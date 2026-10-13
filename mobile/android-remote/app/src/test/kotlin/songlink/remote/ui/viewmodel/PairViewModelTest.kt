@@ -224,7 +224,9 @@ class PairViewModelTest {
 
     @Test
     fun `inbound frames are forwarded to the now playing repo`() = runTest(testDispatcher) {
-        val vm = createViewModel()
+        // createViewModel() 的 viewModelStore.put 副作用负责把 VM 注册到 store 上,
+        // 本测试只关心 repo 是否收到 frame,因此返回值不绑定变量。
+        createViewModel()
 
         fakeTransport.handleTextMessage(Fixtures.text("state"))
         fakeTransport.handleTextMessage(Fixtures.text("lyric"))

@@ -191,8 +191,8 @@ class WsTransportIntegrationTest {
                 }
                 found
             }
-            assertEquals(8L, state!!.seq)
-            assertEquals("晴天", (state as State).now.title)
+            assertEquals(8L, state.seq)
+            assertEquals("晴天", state.now.title)
             assertEquals(8L, transport.lastSeq)
         }
     }
