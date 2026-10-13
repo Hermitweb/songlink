@@ -66,8 +66,9 @@ public sealed class LocalLibrary
     {
         lock (_lock)
         {
-            // 保留最近 50 条
-            while (_history.Count > 50) _history.RemoveAt(0);
+            // 保留最近 50 条。newest 在 index 0,oldest 在尾部 → 修剪尾端。
+            // 之前 RemoveAt(0) 把最新的一条删掉了,导致插入 T50+ 后列表定格在 [T49..T0]。
+            while (_history.Count > 50) _history.RemoveAt(_history.Count - 1);
             File.WriteAllText(HistoryPath, JsonSerializer.Serialize(_history));
         }
     }
