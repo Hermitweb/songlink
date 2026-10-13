@@ -72,8 +72,7 @@ public sealed class LocalLibrary
         }
     }
 
-    private static string SafeName(string s) =>
-        new string(s.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
+    private static string SafeName(string s) => PathSafeName.Sanitize(s);
 
     /// <summary>导入一首：落盘音频字节（可空则仅登记元数据）+ 加入索引。</summary>
     public Track Import(string title, string artist, byte[]? audio, string ext = ".mp3")

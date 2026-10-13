@@ -66,11 +66,11 @@ public static class LyricServiceExtensions
     }
 
     /// <summary>
-    /// 去掉文件名非法字符。与 LyricService.Key / LocalLibrary.SafeName 同一套规则，
-    /// 保证缓存文件名和 TryGet 的查找路径一致（否则拉回来的歌词永远读不到）。
+    /// 去掉文件名非法字符。与 LyricService.Key / LocalLibrary.SafeName 同一套规则
+    /// （实际统一委托到 <see cref="PathSafeName.Sanitize"/>），保证缓存文件名和
+    /// TryGet 的查找路径一致（否则拉回来的歌词永远读不到）。
     /// </summary>
-    private static string SafeName(string s) =>
-        new string(s.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
+    private static string SafeName(string s) => PathSafeName.Sanitize(s);
 
     /// <summary>
     /// LRCLib JSON → 本地 LRC 文本。
