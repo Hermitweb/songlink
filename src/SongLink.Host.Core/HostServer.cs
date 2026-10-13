@@ -355,6 +355,9 @@ components:
                 catch (Exception ex)
                 {
                     Console.Error.WriteLine($"[audio] 启动 AudioStreamSink 失败:{ex.Message}");
+                    // 释放失败的 sink,让下一次 audio:start 能用新端口重试(否则 ??= 短路一直复用坏实例)。
+                    try { _audioSink.Dispose(); } catch { /* 忽略 */ }
+                    _audioSink = null;
                     SendTo(conn, new Ack { Ref = a.Id ?? "", Ok = false });
                     break;
                 }

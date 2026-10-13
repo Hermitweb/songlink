@@ -149,6 +149,51 @@ public class HostServerAudioStartTests
         }
     }
 
+    /// <summary>第一次 audio:start 端口冲突 → Ack{Ok=false} + sink 应被清掉,
+    /// 第二次 audio:start 用另一个端口应成功 (验证失败重试路径)。</summary>
+    [Fact]
+    public async Task AudioStart_port_conflict_then_retry_with_different_port_succeeds()
+    {
+        // 占一个 UDP 端口模拟冲突
+        var conflictPort = 56_000 + Random.Shared.Next(8);
+        using var blocker = new System.Net.Sockets.UdpClient(conflictPort);
+
+        var port = 56_100 + Random.Shared.Next(8);
+        var server = new HostServer(new FakeAdapter(), port: port, pin: "999888",
+            audioRenderer: new NullRenderer());
+        try
+        {
+            server.Start(port);
+            await Task.Delay(150);
+
+            using var ws = new ClientWebSocket();
+            var serverPort = ReadHostServerPort(server);
+            await ws.ConnectAsync(new Uri($"ws://127.0.0.1:{serverPort}/"), CancellationToken.None);
+            await SendAsync(ws, new Hello { Role = "remote", Device = "t", Caps = { "cmd" }, Pin = "999888", Id = "h1", Seq = 1 });
+            await WaitAuth(ws);
+
+            // 第一次:端口被占 → 应回 Ack{Ok=false},sink 应被 dispose+null
+            await SendAsync(ws, new AudioStart { Id = "a-fail", Rate = 16000, Ch = 1, FrameMs = 20, Port = conflictPort, Seq = 2 });
+            var ack1 = await WaitAck(ws, "a-fail", 3000);
+            Assert.NotNull(ack1);
+            Assert.False(ack1!.Ok, $"端口 {conflictPort} 已被占,Ack 应回 ok=false,实际 {ack1.Ok}");
+            Assert.Null(server.AudioSink);
+
+            // 第二次:换个端口 → 应成功
+            var goodPort = 57_000 + Random.Shared.Next(8);
+            await SendAsync(ws, new AudioStart { Id = "a-ok", Rate = 16000, Ch = 1, FrameMs = 20, Port = goodPort, Seq = 3 });
+            var ack2 = await WaitAck(ws, "a-ok", 3000);
+            Assert.NotNull(ack2);
+            Assert.True(ack2!.Ok, $"端口 {goodPort} 空闲,Ack 应回 ok=true,实际 {ack2.Ok}");
+            Assert.NotNull(server.AudioSink);
+            Assert.Equal(goodPort, server.AudioSink!.LocalPort);
+        }
+        finally
+        {
+            await server.DisposeAsync();
+        }
+    }
+
     private static System.Text.Json.Nodes.JsonObject NodeObj(params (string k, string v)[] kv)
     {
         var o = new System.Text.Json.Nodes.JsonObject();
