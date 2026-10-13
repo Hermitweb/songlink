@@ -9,6 +9,10 @@
     <AssemblyName>SongLink.Host</AssemblyName>
     <RootNamespace>SongLink.Host</RootNamespace>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- Benchmarks/ 是嵌套在本工程目录内的独立工程(自带 obj/ 产物)。
+         DefaultItemExcludes 默认只排除本工程的 obj/,必须显式排除,
+         否则嵌套工程的 AssemblyInfo.cs 会被本工程再次编译 → CS0579 属性重复。 -->
+    <DefaultItemExcludes>$(DefaultItemExcludes);Benchmarks/**</DefaultItemExcludes>
   </PropertyGroup>
 
   <ItemGroup>
@@ -17,10 +21,20 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- KRC 解码 -->
+    <PackageReference Include="Concentus" Version="2.2.2" />
+    <PackageReference Include="SharpCompress" Version="0.38.0" />
+    
+    <!-- Excel export (already added) -->
+    <PackageReference Include="EPPlus" Version="7.3.0" />
+  </ItemGroup>
+  
+  <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />
     <None Update="lyrics\*.lrc" CopyToOutputDirectory="PreserveNewest" />
     <None Update="art\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Update="art\*.jpg" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="krc\*.krc" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

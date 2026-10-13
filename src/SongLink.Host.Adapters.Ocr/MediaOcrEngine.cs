@@ -1,7 +1,7 @@
 using System.Runtime.InteropServices.WindowsRuntime;
 using Windows.Globalization;
 using Windows.Graphics.Imaging;
-using Windows.Media.Ocr;
+using WinOcr = Windows.Media.Ocr;
 using SongLink.Host.Adapters.UiaPick.Ocr;
 
 namespace SongLink.Host.Adapters.Ocr;
@@ -13,14 +13,14 @@ namespace SongLink.Host.Adapters.Ocr;
 /// </summary>
 public sealed class MediaOcrEngine : IOcrEngine
 {
-    private readonly OcrEngine? _engine;
+    private readonly WinOcr.OcrEngine? _engine;
 
     public MediaOcrEngine(string? languageTag = "zh-Hans")
     {
         try
         {
-            _engine = (languageTag is not null ? OcrEngine.TryCreateFromLanguage(new Language(languageTag)) : null)
-                      ?? OcrEngine.TryCreateFromUserProfileLanguages();
+            _engine = (languageTag is not null ? WinOcr.OcrEngine.TryCreateFromLanguage(new Language(languageTag)) : null)
+                      ?? WinOcr.OcrEngine.TryCreateFromUserProfileLanguages();
         }
         catch { _engine = null; }
     }
@@ -32,14 +32,14 @@ public sealed class MediaOcrEngine : IOcrEngine
         var result = new OcrResult();
         if (_engine is null || width <= 0 || height <= 0) return result;
 
-        using var bmp = SoftwareBitmap.CreateCopyFromPixels(
-            bgraPixels.AsBuffer(), BitmapPixelFormat.Bgra8, BitmapImageAlphaMode.Ignore, width, height);
+        using var bmp = SoftwareBitmap.CreateCopyFromBuffer(
+            bgraPixels.AsBuffer(), BitmapPixelFormat.Bgra8, width, height, BitmapAlphaMode.Ignore);
 
         var ocr = _engine.RecognizeAsync(bmp).AsTask().GetAwaiter().GetResult();
         foreach (var line in ocr.Lines)
             foreach (var w in line.Words)
             {
-                var r = w.BoundingRectangle;
+                var r = w.BoundingRect;
                 result.Words.Add(new OcrWord(w.Text, new Rect((int)r.X, (int)r.Y, (int)r.Width, (int)r.Height)));
             }
         return result;

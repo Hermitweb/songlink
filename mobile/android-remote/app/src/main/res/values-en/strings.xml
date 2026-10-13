@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- App Name -->
+    <string name="app_name">SongLink Remote</string>
+    
+    <!-- Main Page Text -->
+    <string name="main_title">SongLink Remote</string>
+    <string name="main_subtitle">Remote music playback controller</string>
+    
+    <!-- Pairing Page Text -->
+    <string name="pair_page_title">Device Pairing</string>
+    <string name="pair_page_host_url_hint">Host URL (e.g., ws://localhost:51999)</string>
+    <string name="pair_page_pin_hint">PIN Code (6 digits)</string>
+    <string name="pair_page_connect_button">Connect</string>
+    <string name="pair_page_disconnected">Disconnected</string>
+    <string name="pair_page_connected">Connected</string>
+    
+    <!-- Control Page Text -->
+    <string name="control_page_title">Playback Control</string>
+    <string name="current_song">Now Playing</string>
+    <string name="play_button">Play</string>
+    <string name="pause_button">Pause</string>
+    <string name="prev_button">Previous</string>
+    <string name="next_button">Next</string>
+    <string name="volume_title">Volume</string>
+    
+    <!-- Pick Page Text -->
+    <string name="pick_page_title">Song Picker</string>
+    <string name="search_hint">Search for songs or artists...</string>
+    <string name="search_button">Search</string>
+    <string name="no_results">No matching songs found</string>
+    
+    <!-- Lyrics Page Text -->
+    <string name="lyrics_page_title">Lyrics Display</string>
+    <string name="no_lyrics">No lyrics available</string>
+    <string name="calibrate_button">Calibrate Delay</string>
+    <string name="offset_ms">Offset: {%d} ms</string>
+    
+    <!-- Queue Management Text -->
+    <string name="queue_count">Queue: %d songs</string>
+    <string name="queue_top_button">Pin to Top</string>
+    <string name="queue_clear_button">Clear Queue</string>
+    <string name="queue_empty">Queue is empty</string>
+    
+    <!-- Settings Page Text -->
+    <string name="settings_page_title">Settings</string>
+    <string name="theme_mode_auto">Follow System</string>
+    <string name="theme_mode_light">Light Mode</string>
+    <string name="theme_mode_dark">Dark Mode</string>
+    <string name="about_version">Version</string>
+    <string name="about_build">Build</string>
+    
+    <!-- Status Messages -->
+    <string name="status_connecting">Connecting...</string>
+    <string name="status_connected_success">Connection successful!</string>
+    <string name="status_connection_failed">Connection failed, please check if Host is running</string>
+    <string name="status_playing">Playing</string>
+    <string name="status_paused">Paused</string>
+    <string name="status_stopped">Stopped</string>
+    
+    <!-- Hints -->
+    <string name="hint_check_host_running">Please ensure Host is running and showing PIN code</string>
+    <string name="hint_pin_required">Correct 6-digit PIN code required to connect</string>
+    <string name="hint_enter_song_name">Enter the song or artist name you want to play</string>
+</resources>

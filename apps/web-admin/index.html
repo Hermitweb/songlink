@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SongLink - Web 管理后台</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f5f5; color: #333; }
+        
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+        
+        header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 2rem; text-align: center; border-radius: 8px; margin-bottom: 2rem; }
+        h1 { font-size: 2rem; margin-bottom: 0.5rem; }
+        .status-badge { display: inline-block; background: rgba(255,255,255,0.2); padding: 0.25rem 0.75rem; border-radius: 16px; font-size: 0.875rem; margin-top: 0.5rem; }
+        
+        .card { background: white; border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; }
+        .card-title { font-size: 1.25rem; font-weight: 600; }
+        
+        .btn { display: inline-block; padding: 0.5rem 1rem; border: none; border-radius: 4px; cursor: pointer; font-size: 0.875rem; transition: all 0.2s; }
+        .btn-primary { background: #667eea; color: white; }
+        .btn-danger { background: #ef4444; color: white; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        
+        .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1rem; }
+        
+        .queue-item { display: flex; justify-content: space-between; padding: 0.75rem; background: #f9fafb; border-radius: 4px; margin-bottom: 0.5rem; }
+        .song-title { font-weight: 500; }
+        .song-artist { color: #6b7280; font-size: 0.875rem; }
+        
+        footer { text-align: center; padding: 2rem; color: #6b7280; font-size: 0.875rem; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🎵 SongLink 管理中心</h1>
+            <span class="status-badge" id="connectionStatus">未连接</span>
+        </header>
+        
+        <!-- 当前播放 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">当前播放</span>
+                <button class="btn btn-primary" onclick="sendCmd('toggle')">暂停/播放</button>
+            </div>
+            <div id="currentPlaying">
+                <p style="color: #6b7280; font-style: italic;">暂无播放内容...</p>
+            </div>
+        </div>
+        
+        <!-- 队列管理 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">播放队列 (<span id="queueCount">0</span>)</span>
+                <button class="btn btn-danger" onclick="clearQueue()">清空队列</button>
+            </div>
+            <div id="queueList" class="grid"></div>
+        </div>
+        
+        <!-- 搜索框 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">歌曲搜索</span>
+            </div>
+            <input type="text" id="searchInput" placeholder="输入歌曲名或歌手..." style="width: 100%; padding: 0.75rem; border: 1px solid #e5e7eb; border-radius: 4px; margin-bottom: 1rem;">
+            <button class="btn btn-primary" onclick="searchSong()">搜索</button>
+        </div>
+        
+        <!-- 系统信息 -->
+        <div class="card">
+            <div class="card-header">
+                <span class="card-title">系统信息</span>
+            </div>
+            <ul style="list-style: none; line-height: 1.8;">
+                <li><strong>Host IP:</strong> <span id="hostIp">自动检测</span></li>
+                <li><strong>WebSocket:</strong> <span id="wsInfo">ws://localhost:51999</span></li>
+                <li><strong>版本:</strong> M2.5 (高级版)</li>
+            </ul>
+        </div>
+    </div>
+    
+    <footer>
+        <p>SongLink Music System © 2026 | M2.5 高级功能版</p>
+    </footer>
+    
+    <script src="app.js"></script>
+</body>
+</html>

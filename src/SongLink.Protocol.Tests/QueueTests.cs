@@ -14,7 +14,7 @@ public class QueueTests
     {
         int events = 0;
         var q = new PlayQueue();
-        q.Changed += () => events++;
+        q.Changed += (_args) => events++;
         q.Add("A", "x", "u1");
         q.Add("B", "y", "u2");
         Assert.Equal(2, q.Count);

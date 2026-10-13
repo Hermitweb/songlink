@@ -171,7 +171,12 @@ public static class FrameCodec
 
     public static string Serialize(Frame f) => JsonSerializer.Serialize(f, Options);
 
-    /// <summary>解析一帧；非法 JSON、显式 v!=1、未知 type 返回 null。v 缺失视为合法(默认 1)。</summary>
+    /// <summary>
+    /// 解析一帧；非法 JSON、显式 v!=1、未知 type、字段异常一律返回 null（不抛）。
+    /// 注：System.Text.Json 的多态反序列化要求判别符 "type" 出现在对象首个属性；
+    /// 第三方客户端（Python/JS）常按 {"v":1,"type":"hello"} 顺序发帧，直接 Deserialize&lt;Frame&gt;
+    /// 会抛 NotSupportedException。故这里先取 type 判别符，再按具体派生类型反序列化——对属性顺序不敏感。
+    /// </summary>
     public static Frame? Parse(string json)
     {
         try
@@ -179,9 +184,29 @@ public static class FrameCodec
             var node = JsonNode.Parse(json);
             var vNode = node?["v"];
             if (vNode is not null && vNode.GetValue<int>() != 1) return null;
-            return JsonSerializer.Deserialize<Frame>(json, Options);
+
+            var type = node?["type"]?.GetValue<string>();
+            var clr = type switch
+            {
+                "hello" => typeof(Hello),
+                "cmd" => typeof(Cmd),
+                "ack" => typeof(Ack),
+                "state" => typeof(State),
+                "lyric" => typeof(Lyric),
+                "event" => typeof(EventFrame),
+                "art" => typeof(Art),
+                "srcMeta" => typeof(SrcMeta),
+                "audio:start" => typeof(AudioStart),
+                "audio:stop" => typeof(AudioStop),
+                "error" => typeof(ErrorFrame),
+                "ping" => typeof(Ping),
+                "authResult" => typeof(AuthResult),
+                "searchResults" => typeof(SearchResults),
+                _ => null
+            };
+            if (clr is null) return null;
+            return JsonSerializer.Deserialize(json, clr, Options) as Frame;
         }
-        catch (JsonException) { return null; }
-        catch (InvalidOperationException) { return null; } // 未知 type 判别符
+        catch { return null; }   // 任何字段/类型异常都视为坏帧，交由上层回 BAD_PROTO（不吞连接）
     }
 }

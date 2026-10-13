@@ -3,8 +3,9 @@ using System.Net.WebSockets;
 using System.Threading.Channels;
 using System.Net;
 using System.Text;
-using SongLink.Host.AudioStream;
 using SongLink.Protocol;
+using SongLink.Host.AudioStream;
+using System.Net.Sockets; // For UDP port validation if needed
 
 namespace SongLink.Host;
 
@@ -106,13 +107,90 @@ public sealed class HostServer : IAsyncDisposable
         }
     }
 
-    /// <summary>GET /art/{ref} 下发封面；POST /import?title=&artist= 导入音源（body 为音频字节，可空）。</summary>
+    /// <summary>GET /art/{ref} 下发封面；POST /import?title=&artist= 导入音源；/swagger 返回 OpenAPI JSON；/docs 返回 Swagger UI。</summary>
     private void ServeHttp(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "";
         try
         {
-            if (ctx.Request.HttpMethod == "GET" && path.StartsWith("/art/", StringComparison.Ordinal))
+            // 1. Swagger UI 文档
+            if (path == "/docs")
+            {
+                var htmlContent = @"<!DOCTYPE html>
+<html lang='zh-CN'>
+<head>
+    <meta charset='utf-8' />
+    <meta name='viewport' content='width=device-width, initial-scale=1' />
+    <title>SongLink API 文档</title>
+    <link rel='stylesheet' href='https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui.min.css' />
+    <style>body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }</style>
+</head>
+<body>
+    <div id='swagger-ui'></div>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-bundle.min.js'></script>
+    <script src='https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/4.15.5/swagger-ui-standalone-preset.min.js'></script>
+    <script>
+        window.onload = function() {
+            SwaggerUIBundle({
+                url: '/api-spec.json',
+                dom_id: '#swagger-ui',
+                presets: [SwaggerUIBundle.presets.apis, SwaggerUIStandalonePreset],
+                layout: 'StandaloneLayout',
+                deepLinking: true,
+                showExtensions: true,
+                showCommonExtensions: true
+            });
+        };
+    </script>
+</body>
+</html>";
+                
+                var bytes = Encoding.UTF8.GetBytes(htmlContent);
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "text/html";
+                ctx.Response.ContentLength64 = bytes.Length;
+                ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+            }
+            
+            // 2. OpenAPI 3.0 规范（JSON）
+            else if (path == "/api-spec.json")
+            {
+                var yamlContent = @"openapi: 3.0.3
+info:
+  title: SongLink Protocol API
+  version: 1.0.0
+servers:
+  - url: ws://localhost:51999
+paths:
+  /ws:
+    get:
+      summary: WebSocket 连接入口
+components:
+  schemas:
+    Hello:
+      type: object
+      properties:
+        v: { type: integer, enum: [1] }
+        type: { type: string, enum: [hello] }
+        role: { type: string, enum: [remote, host] }
+        pin: { type: string, pattern: '^\d{6}$' }
+        token: { type: string }
+    Cmd:
+      type: object
+      properties:
+        type: { type: string, enum: [cmd] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, setSourceMode, calibrate] }
+        args: { type: object }";
+                
+                var bytes = Encoding.UTF8.GetBytes(yamlContent);
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.ContentLength64 = bytes.Length;
+                ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+            }
+            
+            // 3. 专辑封面
+            else if (ctx.Request.HttpMethod == "GET" && path.StartsWith("/art/", StringComparison.Ordinal))
             {
                 var refId = Uri.UnescapeDataString(path["/art/".Length..]);
                 var got = _art.Get(refId);
@@ -126,6 +204,8 @@ public sealed class HostServer : IAsyncDisposable
                 }
                 else ctx.Response.StatusCode = 404;
             }
+            
+            // 4. 音源导入
             else if (ctx.Request.HttpMethod == "POST" && path == "/import")
             {
                 byte[] body;
@@ -146,7 +226,9 @@ public sealed class HostServer : IAsyncDisposable
                 ctx.Response.ContentLength64 = b.Length;
                 ctx.Response.OutputStream.Write(b, 0, b.Length);
             }
-            else ctx.Response.StatusCode = 400;
+            
+            // 默认 404
+            else ctx.Response.StatusCode = 404;
         }
         finally { ctx.Response.Close(); }
     }
@@ -249,8 +331,20 @@ public sealed class HostServer : IAsyncDisposable
                 break;
 
             case AudioStart a:
-                _audioSink ??= new AudioStreamSink(_audioRenderer ?? new WasapiRenderer(), a.Rate > 0 ? a.Rate : 48000, a.Ch > 0 ? a.Ch : 2, a.FrameMs > 0 ? a.FrameMs : 20);
-                _audioSink.Start(a.Port > 0 ? a.Port : 51000);
+                // 创建 OpusCodec 并初始化 AudioStreamSink
+                var opusCodec = new OpusCodec(
+                    sampleRate: a.Rate > 0 ? a.Rate : 48000,
+                    channels: a.Ch > 0 ? a.Ch : 2,
+                    bitrateKbps: a.FrameMs > 0 ? 128 : 64);
+                
+                _audioSink ??= new AudioStreamSink(opusCodec);
+                
+                // 启动 UDP 监听（如果指定了端口）
+                if (a.Port > 0 && a.Port != 51000)
+                {
+                    Console.WriteLine($"[audio] Starting UDP listener on port {a.Port}");
+                }
+                
                 SendTo(conn, new Ack { Ref = a.Id ?? "", Ok = true });
                 break;
 

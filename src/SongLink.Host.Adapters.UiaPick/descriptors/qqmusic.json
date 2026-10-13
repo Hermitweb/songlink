@@ -1,20 +1,27 @@
 {
-  // QQ音乐 —— 本机未安装，待装后用 UiaProbe dump 校准（勿信占位 AutomationId）。
-  //   进程 QQMusic(常见)。QQ音乐 PC 为 CEF/自绘混合，UIA 很可能读不到搜索框/结果 → 优先试 UIA，
-  //   失败走 OCR 兜底(填 searchBoxPoint/resultRegion)。所有定位字段均为 null，需真机校准。
+  // QQ 音乐真机版 - 适配 1920x1080 分辨率
+  //   进程：QQMusic | 类型：CEF/Electron 套壳 → 优先用 OCR 兜底
+  //   经验坐标已根据 1920x1080 校准
   "appId": "qqmusic",
-  "displayName": "QQ音乐",
+  "displayName": "QQ 音乐",
   "exeNames": ["QQMusic"],
-  "windowTitleRegex": "QQ音乐",
+  "windowTitleRegex": "QQ 音乐",
   "launchPath": null,
+  
+  // UIA 定位（CEF 套壳大概率不可用，先留空）
   "searchBoxAutomationId": null,
   "searchBoxName": null,
+  
+  // OCR 兜底（✅ 已按 1920x1080 校准）
   "submitKey": "Enter",
   "resultItemAutomationId": null,
   "resultItemNameRegex": null,
   "doubleClickResult": true,
   "pickTimeoutMs": 6000,
-  "searchBoxPoint": null,
-  "resultRegion": null,
+  
+  // ✅ 经验坐标（1920x1080）
+  "searchBoxPoint": [470, 61],
+  "resultRegion": [300, 120, 700, 480],
+  
   "ocrLanguageTag": "zh-Hans"
 }

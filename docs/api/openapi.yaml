@@ -1,0 +1,429 @@
+openapi: 3.0.3
+info:
+  title: SongLink Protocol API
+  description: |
+    **SongLink (点歌台面板) 通信协议** - M2.5/M3 高级版本
+    
+    ## 核心功能
+    - WebSocket JSON 帧通信（类型：text）
+    - PIN 首次配对 + Token 重连鉴权
+    - 队列管理（添加/置顶/删除/清空）
+    - 歌词联网拉取（LRCLib）
+    - 蓝牙 RFCOMM fallback（待真机验证）
+    
+    ## 安全机制
+    - 每帧 HMAC-SHA256 签名（可选，配置开启时强制验签）
+    - PIN 码 6 位数字（首次连接）
+    - Token 长期有效（重连时使用）
+  version: 1.0.0
+  contact:
+    name: SongLink Team
+    url: https://github.com/songlink-project
+  
+servers:
+  - url: ws://localhost:51999
+    description: 开发环境（本地 Host）
+  - url: wss://{host}:{port}
+    description: 生产环境（需替换 host 和 port）
+
+components:
+  schemas:
+    # Frame 基类（多态判别符：type）
+    FrameBase:
+      type: object
+      required: [v, type]
+      properties:
+        v:
+          type: integer
+          description: 协议版本号（固定为 1）
+          enum: [1]
+        id:
+          type: string
+          description: 唯一请求 ID（用于匹配请求/响应）
+        ts:
+          type: number
+          format: float
+          description: 服务器时间戳（秒级浮点数）
+    
+    Hello:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      required: [v, type, role]
+      properties:
+        type:
+          type: string
+          enum: [hello]
+        role:
+          type: string
+          enum: [remote, host]
+          description: "角色：客户端发 remote，服务端回 host"
+        device:
+          type: string
+          description: 设备名称（可选）
+        os:
+          type: string
+          description: 操作系统（可选）
+        caps:
+          type: array
+          items:
+            type: string
+            enum: [cmd, state, lyric, art]
+          description: 能力列表
+        pin:
+          type: string
+          pattern: '^\d{6}$'
+          description: "PIN 码（仅首次配对使用，6 位数字）"
+        token:
+          type: string
+          description: "Token（仅重连使用）"
+        lastSeq:
+          type: integer
+          description: 断线补发上次已接收的序列号（可选）
+    
+    AuthResult:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [authResult]
+        ref:
+          type: string
+          description: 对应 Hello.id
+        ok:
+          type: boolean
+          description: 鉴权结果
+        token:
+          type: string
+          description: 颁发的 Token（成功时）
+        hostKey:
+          type: string
+          format: hex
+          description: "主机签名密钥（HMAC 签名模式时返回）"
+        code:
+          type: string
+          enum: [AUTH_FAILED, INVALID_PIN, NO_AUTH]
+          description: 失败原因代码
+    
+    State:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [state]
+        seq:
+          type: integer
+          description: "全局序列号（单调递增，用于断线补发校验）"
+        now:
+          $ref: '#/components/schemas/NowPlaying'
+    
+    NowPlaying:
+      type: object
+      properties:
+        title:
+          type: string
+          description: 当前播放曲目标题
+        artist:
+          type: string
+          description: 演唱者/艺人
+        album:
+          type: string
+          nullable: true
+          description: 专辑名（可选）
+        pos:
+          type: number
+          format: float
+          description: "当前位置（秒）"
+        dur:
+          type: number
+          format: float
+          description: "总时长（秒）"
+        status:
+          type: string
+          enum: [playing, paused, stopped]
+          description: 播放状态
+        artRef:
+          type: string
+          nullable: true
+          description: 封面引用标识（可选）
+        sourceMode:
+          type: string
+          enum: [PC_LOCAL, PHONE_STREAM]
+          description: "音源模式：PC 本地/手机串流"
+    
+    Cmd:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      required: [v, type, action]
+      properties:
+        type:
+          type: string
+          enum: [cmd]
+        action:
+          type: string
+          enum: [play, pause, stop, next, prev, pick, toggle, search, queue.add, queue.top, queue.remove, queue.clear, setSourceMode, calibrate]
+          description: 命令动作
+        args:
+          type: object
+          properties:
+            title:
+              type: string
+              description: 歌曲标题（pick/search 用）
+            artist:
+              type: string
+              description: 艺人（pick/search 用）
+            kw:
+              type: string
+              description: 搜索关键词（search 用）
+            index:
+              type: integer
+              description: 索引位置（queue.top/remove 用）
+            mode:
+              type: string
+              enum: [PC_LOCAL, PHONE_STREAM]
+              description: 音源模式（setSourceMode 用）
+            lyricOffsetMs:
+              type: integer
+              description: "歌词偏移量（毫秒）（calibrate 用）"
+    
+    Ack:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [ack]
+        ref:
+          type: string
+          description: 对应 Cmd.id
+        ok:
+          type: boolean
+          description: 执行结果
+    
+    Lyric:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [lyric]
+        trackId:
+          type: string
+          description: 歌曲唯一标识
+        offsetMs:
+          type: integer
+          description: "歌词时间轴偏移（毫秒）"
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/LyricLine'
+    
+    LyricLine:
+      type: object
+      properties:
+        t:
+          type: number
+          format: float
+          description: "该行开始时间（秒）"
+        x:
+          type: string
+          description: 歌词文本
+    
+    ErrorFrame:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [error]
+        ref:
+          type: string
+          description: 对应请求 ID
+        code:
+          type: string
+          enum: [AUTH_FAILED, BAD_PROTO, PICK_UNSUPPORTED, APP_NOT_FOUND, NETWORK_ERROR]
+          description: 错误码
+        hint:
+          type: string
+          description: "友好提示文本"
+    
+    SrcMeta:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [srcMeta]
+        title:
+          type: string
+          description: 歌曲标题
+        artist:
+          type: string
+          description: 艺人
+        pos:
+          type: number
+          format: float
+          description: "当前位置（秒）"
+        dur:
+          type: number
+          format: float
+          description: "总时长（秒）"
+        status:
+          type: string
+          enum: [playing, paused]
+          description: 播放状态
+    
+    SearchResults:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [searchResults]
+        query:
+          type: string
+          description: 搜索关键词
+        results:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              artist:
+                type: string
+              album:
+                type: string
+                nullable: true
+              dur:
+                type: number
+                format: float
+                nullable: true
+    
+    Art:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [art]
+        ref:
+          type: string
+          description: 封面引用标识
+        mime:
+          type: string
+          enum: [image/png, image/jpeg, image/webp]
+        size:
+          type: integer
+          description: "文件大小（字节）"
+    
+    Ping:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [ping]
+    
+    EventFrame:
+      allOf:
+        - $ref: '#/components/schemas/FrameBase'
+      properties:
+        type:
+          type: string
+          enum: [event]
+        name:
+          type: string
+          enum: [queue-updated, source-mode-changed, adapter-caps-changed]
+          description: 事件名称
+        mode:
+          type: string
+          description: "模式信息（source-mode-changed 用）"
+        queue:
+          type: array
+          items:
+            type: object
+            properties:
+              title:
+                type: string
+              artist:
+                type: string
+              by:
+                type: string
+
+paths:
+  /ws:
+    get:
+      summary: WebSocket 连接入口
+      description: |
+        升级 HTTP/1.1 → WebSocket/TCP
+        
+        需要手动指定 Upgrade 头：
+        ```http
+        GET /ws HTTP/1.1
+        Upgrade: websocket
+        Connection: Upgrade
+        Sec-WebSocket-Key: dGhlIHNhbXBsZSBu b24j
+        Sec-WebSocket-Version: 13
+        ```
+        
+      responses:
+        '101':
+          description: 切换协议成功
+        '400':
+          description: 非 WebSocket 请求或鉴权失败
+      
+  /art/{ref}:
+    get:
+      summary: 获取专辑封面
+      description: "HTTP GET 拉取封面图片"
+      parameters:
+        - in: path
+          name: ref
+          required: true
+          schema:
+            type: string
+          description: 封面引用标识（如 "img:sunny-day-0"）
+      responses:
+        '200':
+          description: 图片数据
+          content:
+            image/png: { }
+            image/jpeg: { }
+            image/webp: { }
+        '404':
+          description: 封面不存在
+          
+security:
+  - httpBearer: []
+
+components:
+  securitySchemes:
+    httpBearer:
+      type: http
+      scheme: bearer
+      description: "通过 Hello Pin/Token 实现认证，无需额外 Bearer 令牌"
+
+tags:
+  - name: Authentication
+    description: 鉴权相关接口
+  - name: Playback Control
+    description: 播放控制命令
+  - name: Queue Management
+    description: 队列管理操作
+  - name: Lyrics
+    description: 歌词服务
+  - name: Events
+    description: 广播事件通知
+
+x-api-versioning:
+  current: "1.0.0"
+  supported-versions:
+    - "1.0.0"
+  deprecation-policy: "向后兼容至少 1 个主版本"
+
+x-auth-notes:
+  pin-based: "首次连接必须提供 6 位数字 PIN 码"
+  token-persistence: "Token 可在多次会话中复用（重启 Host 后失效）"
+  hmac-signature: "启用 RequireFrameSig 后，入站 Cmd 帧需携带 HMAC-SHA256 签名"

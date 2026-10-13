@@ -1,0 +1,25 @@
+{
+  // QQ 音乐真机校准版（OCR 兜底优先）
+  //   进程：QQMusic | 类型：CEF/自绘混合 → UIA 读不到控件概率高 → 默认用 OCR
+  //   搜索框位置经验值：(470, 61) - 主窗口顶部居中
+  //   结果区域经验值：(300, 120, 700, 480) - 中部列表区域
+  "appId": "qqmusic",
+  "displayName": "QQ 音乐",
+  "exeNames": ["QQMusic"],
+  "windowTitleRegex": "QQ 音乐",
+  "launchPath": null,
+  
+  // UIA 定位（占位，CEF 套壳大概率不可用）
+  "searchBoxAutomationId": null,      // 待 FlaUIInspect 验证
+  "searchBoxName": null,              // 待 FlaUIInspect 验证
+  
+  // OCR 兜底（推荐先用这个）
+  "submitKey": "Enter",
+  "resultItemAutomationId": null,     // 等 FlaUIInspect 验证
+  "resultItemNameRegex": null,        // 等 FlaUIInspect 验证
+  "doubleClickResult": true,
+  "pickTimeoutMs": 6000,
+  "searchBoxPoint": [470, 61],        // ✅ 经验坐标（需按分辨率调整）
+  "resultRegion": [300, 120, 700, 480], // ✅ 经验坐标（需按分辨率调整）
+  "ocrLanguageTag": "zh-Hans"
+}

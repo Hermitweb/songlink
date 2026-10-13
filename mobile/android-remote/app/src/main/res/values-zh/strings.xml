@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 应用名称 -->
+    <string name="app_name">SongLink Remote</string>
+    
+    <!-- 主页面文本 -->
+    <string name="main_title">点歌台遥控端</string>
+    <string name="main_subtitle">远程操控电脑播放音乐</string>
+    
+    <!-- 配对页文本 -->
+    <string name="pair_page_title">设备配对</string>
+    <string name="pair_page_host_url_hint">主机地址 (例如：ws://localhost:51999)</string>
+    <string name="pair_page_pin_hint">PIN 码（6 位数字）</string>
+    <string name="pair_page_connect_button">连接</string>
+    <string name="pair_page_disconnected">未连接</string>
+    <string name="pair_page_connected">已连接</string>
+    
+    <!-- 控制页文本 -->
+    <string name="control_page_title">播放控制</string>
+    <string name="current_song">当前播放</string>
+    <string name="play_button">播放</string>
+    <string name="pause_button">暂停</string>
+    <string name="prev_button">上一首</string>
+    <string name="next_button">下一首</string>
+    <string name="volume_title">音量</string>
+    
+    <!-- 搜索页文本 -->
+    <string name="pick_page_title">点歌台</string>
+    <string name="search_hint">输入歌曲名或歌手...</string>
+    <string name="search_button">搜索</string>
+    <string name="no_results">没有找到匹配的歌曲</string>
+    
+    <!-- 歌词页文本 -->
+    <string name="lyrics_page_title">歌词副屏</string>
+    <string name="no_lyrics">暂无歌词</string>
+    <string name="calibrate_button">校准延迟</string>
+    <string name="offset_ms">偏移量：{%d} ms</string>
+    
+    <!-- 队列管理文本 -->
+    <string name="queue_count">队列：%d首</string>
+    <string name="queue_top_button">置顶</string>
+    <string name="queue_clear_button">清空队列</string>
+    <string name="queue_empty">队列已清空</string>
+    
+    <!-- 设置页文本 -->
+    <string name="settings_page_title">设置</string>
+    <string name="theme_mode_auto">跟随系统</string>
+    <string name="theme_mode_light">亮色模式</string>
+    <string name="theme_mode_dark">暗色模式</string>
+    <string name="about_version">版本</string>
+    <string name="about_build">构建</string>
+    
+    <!-- 状态消息 -->
+    <string name="status_connecting">正在连接...</string>
+    <string name="status_connected_success">连接成功！</string>
+    <string name="status_connection_failed">连接失败，请检查主机是否运行</string>
+    <string name="status_playing">播放中</string>
+    <string name="status_paused">已暂停</string>
+    <string name="status_stopped">已停止</string>
+    
+    <!-- 提示信息 -->
+    <string name="hint_check_host_running">请先确保 Host 已启动并显示 PIN 码</string>
+    <string name="hint_pin_required">必须输入正确的 6 位 PIN 码才能连接</string>
+    <string name="hint_enter_song_name">请输入您想听的歌曲或歌手名字</string>
+</resources>
