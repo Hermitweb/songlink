@@ -20,7 +20,7 @@ public sealed class LyricService
         => _dir = dir ?? Path.Combine(AppContext.BaseDirectory, "lyrics");
 
     private static string Key(string title, string artist) =>
-        new string($"{title} - {artist}".Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
+        PathSafeName.Sanitize($"{title} - {artist}");
 
     /// <summary>LRC 根目录。联网拉取（LyricServiceExtensions）把新歌词缓存回这个目录。</summary>
     public string LibraryDirectory => _dir;
