@@ -96,17 +96,20 @@ dependencies {
     // 权限
     implementation(libs.accompanist.permissions)
 
-    // 二维码 / OCR
+    // 二维码
     implementation(libs.zxing.android.embedded)
-    implementation(libs.tensorflow.lite)
+    // tflite 之前是 OCR 引擎占位，但下游 16 MB 的 libtensorflowlite_jni.so（4 ABI）无对应
+    // 源码调用——本轮彻底移除；OCR 用 zxing + 视觉字符匹配即可。
+    // implementation(libs.tensorflow.lite)  // 已移除
 
     // 网络 / JSON
     implementation(libs.okhttp)
     implementation(libs.kotlinx.serialization.json)
 
-    // Apache POI for Excel export
-    implementation(libs.poi)
-    implementation(libs.poi.ooxml)
+    // Excel 导出改用纯 JDK 手写 .xlsx（Java.util.zip），见 data/PlaybackHistory.kt；
+    // 之前 Apache POI 5.2.3 占 classes.dex ~25 MB 的体积，但实际只被 stub 占用，本轮移除
+    // implementation(libs.poi)                // 已移除
+    // implementation(libs.poi.ooxml)         // 已移除
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)

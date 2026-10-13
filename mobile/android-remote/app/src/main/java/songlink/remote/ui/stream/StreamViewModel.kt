@@ -50,7 +50,7 @@ class StreamViewModel @Inject constructor(
                 isConnected = true
                 
                 // 启动音频采集器（Android 端实现）
-                audioTransportManager.startAudioCapture(port) { success, err ->
+                audioTransportManager.startAudioCapture(hostIp, port) { success, err ->
                     if (success) {
                         callback(true, null)
                     } else {

@@ -186,7 +186,16 @@ public sealed class LocalLibrary
     }
 
     public int Count { get { lock (_lock) return _tracks.Count; } }
-    
+
+    /// <summary>
+    /// 全部曲目（适配器按此枚举实现 Next/Prev；之前 LocalSourceAdapter.Next/Prev 调
+    /// <c>Search("")</c> 而 <c>Search</c> 对空关键词直接返回空列表，恒返回 false）。
+    /// </summary>
+    public IReadOnlyList<Track> Tracks
+    {
+        get { lock (_lock) return _tracks.ToList(); }
+    }
+
     /// <summary>批量导入结果</summary>
     public sealed class ImportBatchResult
     {

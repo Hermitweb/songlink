@@ -158,11 +158,21 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     {
         if (_disposed) return false;
 
-        var allTracks = await Task.Run(() => _library.Search("").ToList());
+        // 之前用 _library.Search("") 切空关键词恒返回空列表，所以 Next/Prev 一直是死代码。
+        // 改用 _library.Tracks 公开枚举 API。
+        var allTracks = await Task.Run(() => _library.Tracks);
         if (allTracks.Count == 0) return false;
 
-        var current = allTracks.FirstOrDefault(t => t.File == Path.GetFileName(_currentFile));
-        int currentIndex = current is null ? -1 : allTracks.IndexOf(current);
+        // IReadOnlyList<T> 不暴露 IndexOf，用单次遍历同时算 currentIndex
+        int currentIndex = -1;
+        for (int i = 0; i < allTracks.Count; i++)
+        {
+            if (allTracks[i].File == Path.GetFileName(_currentFile))
+            {
+                currentIndex = i;
+                break;
+            }
+        }
         int nextIndex = (currentIndex + direction + allTracks.Count) % allTracks.Count;
 
         return await Pick(allTracks[nextIndex].Title, allTracks[nextIndex].Artist);

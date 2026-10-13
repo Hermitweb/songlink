@@ -335,9 +335,10 @@ components:
                 var opusCodec = new OpusCodec(
                     sampleRate: a.Rate > 0 ? a.Rate : 48000,
                     channels: a.Ch > 0 ? a.Ch : 2,
-                    bitrateKbps: a.FrameMs > 0 ? 128 : 64);
+                    bitrateBps: a.FrameMs > 0 ? 128_000 : 64_000,
+                    frameMs: a.FrameMs > 0 ? a.FrameMs : OpusCodec.DefaultFrameMs);
                 
-                _audioSink ??= new AudioStreamSink(opusCodec);
+                _audioSink ??= new AudioStreamSink(opusCodec, _audioRenderer ?? new NullRenderer());
                 
                 // 启动 UDP 监听（如果指定了端口）
                 if (a.Port > 0 && a.Port != 51000)

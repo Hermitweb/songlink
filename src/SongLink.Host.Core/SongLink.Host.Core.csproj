@@ -28,6 +28,11 @@
     <!-- Excel export (already added) -->
     <PackageReference Include="EPPlus" Version="7.3.0" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- 测试工程可访问 internal 成员(LyricServiceExtensions 静态类为 internal) -->
+    <InternalsVisibleTo Include="SongLink.Host.Tests" />
+  </ItemGroup>
   
   <ItemGroup>
     <None Update="appsettings.json" CopyToOutputDirectory="PreserveNewest" />

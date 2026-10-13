@@ -72,34 +72,35 @@ public static class LyricServiceExtensions
     private static string SafeName(string s) =>
         new string(s.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
 
-    /// <summary>转换 LRCLib JSON → LRC 文本格式</summary>
+    /// <summary>
+    /// LRCLib JSON → 本地 LRC 文本。
+    /// LRCLib 的 <c>syncedLyrics</c> 字段本身就是 LRC 格式（每行 <c>[mm:ss.xx]text</c>），
+    /// 旧实现把它按"空格切分再 double.Parse 时间"是错误前提（实际上第 0 段是
+    /// <c>[01:23.45]</c> 这种带方括号带冒号的字符串，<c>double.Parse</c> 必抛 FormatException）。
+    /// 正确做法：直接透传 <c>syncedLyrics</c>，仅当缺元数据时按 LRC 惯例在头部补
+    /// <c>[ti:]</c> 与 <c>[ar:]</c>。
+    /// </summary>
     private static string ConvertLrclibToLrc(LrclibLyrics lrclib)
     {
-        var lines = new List<string>();
+        var body = lrclib.syncedLyrics ?? string.Empty;
+        if (body.Length == 0) return string.Empty;
 
-        if (lrclib.syncedLyrics is null) return string.Empty;
+        var lines = body.Replace("\r\n", "\n").Split('\n').ToList();
 
-        foreach (var line in lrclib.syncedLyrics.Split('\n'))
+        bool hasTi = lines.Any(l => l.TrimStart().StartsWith("[ti:", StringComparison.OrdinalIgnoreCase));
+        bool hasAr = lines.Any(l => l.TrimStart().StartsWith("[ar:", StringComparison.OrdinalIgnoreCase));
+
+        if (!hasTi && lrclib.track?.title is { Length: > 0 } tt)
+            lines.Insert(0, $"[ti:{tt}]");
+        if (!hasAr && lrclib.track?.artist is { Length: > 0 } ar)
         {
-            var parts = line.Split(' ');
-            if (parts.Length >= 2)
-            {
-                var timeMs = double.Parse(parts[0]);
-                var text = string.Join(" ", parts.Skip(1));
-                
-                var min = (int)(timeMs / 60000);
-                var sec = (int)((timeMs % 60000) / 1000);
-                var ms = (int)(timeMs % 1000);
-                
-                // [mm:ss.xx] 歌词文本
-                lines.Add($"[{min:D2}:{sec:D2}.{ms:D2}] {text.Trim()}");
-            }
+            // [ar:] 应紧随 [ti:] 之后；若 [ti:] 是新插入的，它在 index 0，
+            // 否则 [ti:] 是 LRCLib 原本就有的，仍在 index 0。
+            int insertAt = (lines.Count > 0 && lines[0].TrimStart().StartsWith("[ti:", StringComparison.OrdinalIgnoreCase))
+                ? 1 : 0;
+            lines.Insert(insertAt, $"[ar:{ar}]");
         }
-        
-        // 添加标题元数据
-        lines.Insert(0, $"[ti:{lrclib.track?.title}]");
-        lines.Insert(1, $"[ar:{lrclib.track?.artist}]");
-        
+
         return string.Join("\n", lines);
     }
 
