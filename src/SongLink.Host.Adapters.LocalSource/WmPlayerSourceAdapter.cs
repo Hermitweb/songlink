@@ -189,13 +189,22 @@ public sealed class WmPlayerSourceAdapter : IPlayerAdapter, IDisposable
     {
         if (_disposed) return Array.Empty<SearchResultItem>();
         var tracks = await Task.Run(() => _library.Search(kw), ct);
-        return tracks.Select(t => new SearchResultItem 
-        { 
-            Title = t.Title, 
-            Artist = t.Artist, 
+        return tracks.Select(t => new SearchResultItem
+        {
+            Title = t.Title,
+            Artist = t.Artist,
             Album = "本地",
-            Dur = 180.0 
+            Dur = 180.0
         }).ToList();
+    }
+
+    // WMPlayer COM 接口不直接暴露音量(Caps 不含 Volume);记为 last-known 即可。
+    private double _lastVolume = 1.0;
+    public Task<double> GetVolume(CancellationToken ct = default) => Task.FromResult(_lastVolume);
+    public Task<bool> SetVolume(double volume, CancellationToken ct = default)
+    {
+        _lastVolume = Math.Clamp(volume, 0.0, 1.0);
+        return Task.FromResult(true);
     }
 
     private async Task<bool> PickNextSong(int direction)

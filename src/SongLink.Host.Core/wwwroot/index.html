@@ -43,6 +43,11 @@
     <button id="btn-prev" title="上一首">⏮</button>
     <button id="btn-play" title="播放/暂停" class="primary">▶</button>
     <button id="btn-next" title="下一首">⏭</button>
+    <div class="volume" title="音量">
+      <button id="btn-mute" class="ghost" title="静音/恢复">🔊</button>
+      <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="音量">
+      <span id="vol-num" class="muted">100</span>
+    </div>
   </section>
 
   <section id="lyrics">

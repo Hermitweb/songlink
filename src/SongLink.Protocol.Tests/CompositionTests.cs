@@ -89,7 +89,7 @@ public class CompositionTests
     {
         var a = AdapterFactory.Create(new HostConfig { Adapter = "fake" });
         Assert.IsType<FakeAdapter>(a);
-        Assert.Equal(AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search, a.Caps);
+        Assert.Equal(AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search | AdapterCapability.Volume, a.Caps);
     }
 
     [Fact]

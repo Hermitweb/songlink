@@ -14,6 +14,19 @@ public sealed class WasapiRenderer : IAudioRenderer
     private BufferedWaveProvider? _buffer;
     private WasapiOut? _out;
 
+    /// <summary>WasapiOut.Volume 用 IAudioEndpointVolume 内部标量(0.0~1.0)。
+    /// 我们保留 _volume 缓存以便 Stop→Start 重建后能恢复到上次音量。</summary>
+    private double _volume = 1.0;
+    public double Volume
+    {
+        get => _volume;
+        set
+        {
+            _volume = Math.Clamp(value, 0.0, 1.0);
+            try { if (_out is not null) _out.Volume = (float)_volume; } catch { /* 忽略:可能设备已拔出 */ }
+        }
+    }
+
     public void Start(int sampleRate, int channels)
     {
         Stop();
@@ -22,7 +35,7 @@ public sealed class WasapiRenderer : IAudioRenderer
             DiscardOnBufferOverflow = true,
             BufferDuration = TimeSpan.FromSeconds(2)
         };
-        _out = new WasapiOut(AudioClientShareMode.Shared, latency: 60);
+        _out = new WasapiOut(AudioClientShareMode.Shared, latency: 60) { Volume = (float)_volume };
         _out.Init(_buffer);
         _out.Play();
     }

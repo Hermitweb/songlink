@@ -191,7 +191,7 @@ components:
       type: object
       properties:
         type: { type: string, enum: [cmd] }
-        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, queue.move, setSourceMode, calibrate, getLyric, trending, history.list] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, queue.move, setSourceMode, calibrate, getLyric, trending, history.list, volume] }
         args: { type: object }";
                 
                 var bytes = Encoding.UTF8.GetBytes(yamlContent);
@@ -469,6 +469,7 @@ components:
                     "prev" => await _adapter.Prev(_cts.Token),
                     "pick" => (_adapter.Caps & AdapterCapability.Pick) != 0
                                 && await _adapter.Pick(c.Args?["title"]?.GetValue<string>() ?? "", c.Args?["artist"]?.GetValue<string>() ?? "", _cts.Token),
+                    "volume" => HandleVolume(c),
                     _ => false
                 };
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = ok });
@@ -553,6 +554,33 @@ components:
         if (node is null) return null;
         try { return node.GetValue<int>(); }
         catch { return int.TryParse(node.ToString(), out var v) ? v : null; }
+    }
+
+    /// <summary>处理 volume 命令：args.level = 0.0~1.0（必填）。
+    /// 成功时：更新 MediaBus 状态→广播 State；调 audioSink.SetVolume（PHONE_STREAM 时控制 PC 渲染器）；
+    /// 调 adapter.SetVolume（Caps 含 Volume 时转发给源 App 自身音量）。</summary>
+    private bool HandleVolume(Cmd c)
+    {
+        double v = 1.0;
+        try
+        {
+            if (c.Args?["level"] is { } node) v = node.GetValue<double>();
+            else if (c.Args?["volume"] is { } node2) v = node2.GetValue<double>();
+            else return false;
+        }
+        catch { return false; }
+
+        v = Math.Clamp(v, 0.0, 1.0);
+        _bus.SetVolume(v);
+        // PHONE_STREAM 模式下 sink 才是出声路径 → 直接推给渲染器
+        _audioSink?.SetVolume(v);
+        // 源 App 自身音量（NAudio WaveOutEvent 等），cap 检查避免空调
+        if ((_adapter.Caps & AdapterCapability.Volume) != 0)
+        {
+            try { _ = _adapter.SetVolume(v, _cts.Token); } catch { /* 静默失败 */ }
+        }
+        Broadcast(new EventFrame { Name = "volume-changed" });
+        return true;
     }
 
     /// <summary>处理 queue.* 命令（契约 §3.6 + 落雪风格增强）。返回是否成功。</summary>

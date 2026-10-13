@@ -15,6 +15,12 @@ public sealed class AudioStreamSink : IDisposable
 {
     private readonly OpusCodec _codec;
     private readonly IAudioRenderer _renderer;
+
+    /// <summary>调整 WASAPI/Null 渲染器的输出音量（0.0~1.0）。Stop 后无效；下次 Start 沿用。</summary>
+    public void SetVolume(double volume)
+    {
+        try { _renderer.Volume = Math.Clamp(volume, 0.0, 1.0); } catch { /* 忽略 */ }
+    }
     private readonly int _port;
     private readonly object _lock = new();
 

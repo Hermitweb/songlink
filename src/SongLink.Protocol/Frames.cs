@@ -90,11 +90,14 @@ public sealed class NowPlaying
     [JsonPropertyName("artRef")] public string? ArtRef { get; set; }
     [JsonPropertyName("sourceMode")] public string SourceMode { get; set; } = "PC_LOCAL";
 
+    /// <summary>音量 0.0~1.0（Web 面板音量条用）。</summary>
+    [JsonPropertyName("volume")] public double Volume { get; set; } = 1.0;
+
     /// <summary>浅拷贝（字段皆值类型/不可变字符串），供广播前克隆、不改共享实例（#8）。</summary>
     public NowPlaying Clone() => new()
     {
         Title = Title, Artist = Artist, Album = Album, Pos = Pos, Dur = Dur,
-        Status = Status, ArtRef = ArtRef, SourceMode = SourceMode
+        Status = Status, ArtRef = ArtRef, SourceMode = SourceMode, Volume = Volume
     };
 }
 

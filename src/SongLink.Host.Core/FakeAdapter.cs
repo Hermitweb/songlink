@@ -21,7 +21,7 @@ public sealed class FakeAdapter : IPlayerAdapter
     };
 
     public string AppId => "fake";
-    public AdapterCapability Caps => AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search;
+    public AdapterCapability Caps => AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search | AdapterCapability.Volume;
 
     public Task<IReadOnlyList<SearchResultItem>> Search(string kw, CancellationToken ct = default)
     {
@@ -71,5 +71,14 @@ public sealed class FakeAdapter : IPlayerAdapter
                 if (Tracks[i].Title == title) { _index = i; _playing = true; _startedUtc = DateTime.UtcNow; return Task.FromResult(true); }
         }
         return Task.FromResult(false); // 假曲库里没有
+    }
+
+    private double _volume = 1.0;
+    public Task<double> GetVolume(CancellationToken ct = default) { lock (_lock) return Task.FromResult(_volume); }
+    public Task<bool> SetVolume(double volume, CancellationToken ct = default)
+    {
+        var v = Math.Clamp(volume, 0.0, 1.0);
+        lock (_lock) { _volume = v; }
+        return Task.FromResult(true);
     }
 }

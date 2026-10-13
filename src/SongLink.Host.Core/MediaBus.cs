@@ -16,11 +16,19 @@ public sealed class MediaBus : IAsyncDisposable
     private readonly StateGate _gate = new();
     private Task? _loop;
     private NowPlaying? _current;
+    private double _volume = 1.0;
 
     public event Action<NowPlaying>? Changed;
 
     public NowPlaying? Current => _current;
     public string SourceMode { get; private set; } = "PC_LOCAL";
+
+    /// <summary>当前音量（Web 面板音量条用，0.0~1.0）。</summary>
+    public double Volume
+    {
+        get => _volume;
+        set => _volume = Math.Clamp(value, 0.0, 1.0);
+    }
 
     public MediaBus(IPlayerAdapter adapter) => _adapter = adapter;
 
@@ -66,11 +74,26 @@ public sealed class MediaBus : IAsyncDisposable
         Emit(np, "PHONE_STREAM");
     }
 
-    private void Emit(NowPlaying np, string mode)
+    /// <summary>用户/外部设置音量(0.0~1.0)：更新总线当前音量并立刻广播一次，
+    /// 让 Web 面板/系统混音器同步。失败不抛（best-effort）。</summary>
+    public void SetVolume(double volume, bool forceEmit = true)
+    {
+        var v = Math.Clamp(volume, 0.0, 1.0);
+        if (Math.Abs(v - _volume) < 1e-6 && !forceEmit) return;
+        _volume = v;
+        if (_current is null) { _current = new NowPlaying { Volume = v }; Changed?.Invoke(_current.Clone()); return; }
+        // 用现有 _current 的元数据但盖上 Volume,再 Emit,StateGate 会判定变化
+        var snap = _current.Clone(); snap.Volume = v;
+        Emit(snap, SourceMode, skipGate: true);   // 音量变化必须立即生效,不走 StateGate 去抖
+    }
+
+    private void Emit(NowPlaying np, string mode, bool skipGate = false)
     {
         var snapshot = np.Clone();
         snapshot.SourceMode = mode;
-        if (_gate.ShouldEmit(snapshot, DateTimeOffset.UtcNow))
+        // 把当前音量盖上(适配器 ReadNowPlaying 一般给 1.0;Host 才是 source of truth)
+        snapshot.Volume = _volume;
+        if (skipGate || _gate.ShouldEmit(snapshot, DateTimeOffset.UtcNow))
         {
             _current = snapshot;
             Changed?.Invoke(snapshot);

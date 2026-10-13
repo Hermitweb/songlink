@@ -47,6 +47,10 @@ public sealed class UiaPickAdapter : IPlayerAdapter, IDisposable
     public Task<IReadOnlyList<SearchResultItem>> Search(string kw, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
 
+    // 音量转发到 inner（inner 决定实际能不能调）；UIA 本身没音量 API。
+    public Task<double> GetVolume(CancellationToken ct = default) => _inner.GetVolume(ct);
+    public Task<bool> SetVolume(double volume, CancellationToken ct = default) => _inner.SetVolume(volume, ct);
+
     /// <summary>点任意歌：先试 UIA（读得到控件时），失败回退 OCR（截图→识别→点坐标）。best-effort，均失败返回 false。</summary>
     public Task<bool> Pick(string title, string artist, CancellationToken ct = default)
     {

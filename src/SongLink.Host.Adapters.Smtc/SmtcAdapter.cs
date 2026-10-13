@@ -185,6 +185,15 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
     public Task<IReadOnlyList<SearchResultItem>> Search(string kw, CancellationToken ct = default)
         => Task.FromResult<IReadOnlyList<SearchResultItem>>(Array.Empty<SearchResultItem>());
 
+    // SMTC 不直接暴露系统音量 API（Caps 不含 Volume）；存为 last-known 即可。
+    private double _lastVolume = 1.0;
+    public Task<double> GetVolume(CancellationToken ct = default) => Task.FromResult(_lastVolume);
+    public Task<bool> SetVolume(double volume, CancellationToken ct = default)
+    {
+        _lastVolume = Math.Clamp(volume, 0.0, 1.0);
+        return Task.FromResult(true);
+    }
+
     public void Dispose()
     {
         var mgr = _mgr;

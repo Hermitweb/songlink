@@ -4,7 +4,7 @@
 
   let ws = null;
   let seq = 0;
-  let cur = { title: '', artist: '', album: '', dur: 0, pos: 0, status: '', sourceMode: '', artRef: '' };
+  let cur = { title: '', artist: '', album: '', dur: 0, pos: 0, status: '', sourceMode: '', artRef: '', volume: 1.0 };
   let lines = [];
   let lineIdx = -1;
   let queue = [];
@@ -15,6 +15,10 @@
   let userName = localStorage.getItem('songlink.user') || '';
   let searchRef = 0;
   let trendingRef = 0;
+  let reconnectTimer = null;
+  let reconnectDelay = 0;     // 退避秒(0/3/5/8,最大 15)
+  let volumeMuted = false;
+  let preMuteVolume = 1.0;
 
   const $ = id => document.getElementById(id);
   const fmtTime = s => { const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, '0')}`; };
@@ -51,6 +55,13 @@
     if (cur.artRef) { art.src = `/art/${encodeURIComponent(cur.artRef)}`; art.style.display = ''; ph.style.display = 'none'; }
     else { art.removeAttribute('src'); art.style.display = 'none'; ph.style.display = ''; }
     $('btn-play').textContent = status === 'playing' ? '⏸' : '▶';
+    // 音量同步(状态推送时):把 cur.volume(0~1)反映到 slider + 数字;不抢用户拖动中焦点
+    if (typeof cur.volume === 'number') {
+      const pct = Math.round(cur.volume * 100);
+      const vol = $('vol'); if (vol && document.activeElement !== vol) vol.value = pct;
+      const num = $('vol-num'); if (num) num.textContent = pct;
+      const mute = $('btn-mute'); if (mute) mute.textContent = cur.volume > 0 ? '🔊' : '🔇';
+    }
   }
 
   function renderLyrics() {
@@ -68,6 +79,8 @@
     $('queue-list').innerHTML = queue.map((it, i) => {
       const cls = i === queueIdx ? ' current' : (queueIdx > i ? ' played' : '');
       const draggable = queue.length > 1 ? ' draggable="true"' : '';
+      const canUp = i > 0;
+      const canDown = i < queue.length - 1;
       return `<li class="${cls.trim()}" data-i="${i}"${draggable}>
         <span class="handle" title="拖动排序">⇅</span>
         <span class="idx">${i + 1}.</span>
@@ -77,7 +90,9 @@
           <span class="by">点歌人: ${esc(it.by || '匿名')}</span>
         </div>
         <div class="ops">
-          ${i > 0 ? `<button data-act="top" data-i="${i}" title="置顶">⬆</button>` : ''}
+          ${canUp ? `<button data-act="up" data-i="${i}" title="上移">▲</button>` : ''}
+          ${canDown ? `<button data-act="down" data-i="${i}" title="下移">▼</button>` : ''}
+          ${i > 0 ? `<button data-act="top" data-i="${i}" title="置顶">⤒</button>` : ''}
           <button data-act="remove" data-i="${i}" title="移除" class="danger">✕</button>
         </div>
       </li>`;
@@ -151,15 +166,34 @@
   function connect(pin) {
     pinCode = (pin || '').trim();
     if (!pinCode) { alert('请输入 PIN'); return; }
+    if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     setConn('connecting');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/`);
     ws.onopen = () => {
+      reconnectDelay = 0;
       send({ type: 'hello', id: uuid(), role: 'remote', device: 'web-panel', os: navigator.platform, caps: ['cmd', 'state', 'lyric', 'queue'], pin: pinCode });
     };
     ws.onmessage = ev => { try { handle(JSON.parse(ev.data)); } catch (e) { console.warn('bad frame', e); } };
-    ws.onclose = () => setConn('disconnected');
-    ws.onerror = () => setConn('disconnected');
+    ws.onclose = () => {
+      setConn('disconnected');
+      scheduleReconnect();
+    };
+    ws.onerror = () => {
+      // onclose 紧跟着 onerror,统一在 close 处理重连
+      try { ws && ws.close(); } catch { /* 忽略 */ }
+    };
+  }
+
+  // 网络抖动/后端重启后自动重连:3s → 5s → 8s → 15s(封顶)
+  function scheduleReconnect() {
+    if (reconnectTimer || !pinCode) return;
+    reconnectDelay = reconnectDelay === 0 ? 3 : Math.min(reconnectDelay * 1.6 + 1, 15);
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      const b = $('conn'); if (b) b.textContent = `重连中…(${reconnectDelay}s)`;
+      connect(pinCode);
+    }, reconnectDelay * 1000);
   }
 
   function handle(f) {
@@ -201,6 +235,11 @@
         if (f.name === 'source-mode-changed') cur.sourceMode = f.mode || '';
         if (f.name === 'queue-shuffled') queueShuffled = true;
         if (f.name === 'queue-unshuffled') queueShuffled = false;
+        if (f.name === 'volume-changed') {
+          // 状态推送里有最新 volume,这里无需动作(renderNow 已经从 state 拿过)
+          if (typeof f.volume === 'number') cur.volume = f.volume;
+          renderNow();
+        }
         if (f.name === 'history-list') {
           history = (f.queue || []).slice();   // 历史也用 Queue 字段携带 (JSON 数组)
           renderHistory();
@@ -209,6 +248,7 @@
         break;
       case 'error':
         if (f.code === 'DUPLICATE') toast(f.hint || '已在队列中', 'error');
+        else if (f.code === 'PICK_UNSUPPORTED' || f.code === 'APP_NOT_FOUND') toast('点歌失败: ' + (f.hint || f.code), 'error');
         else console.warn('server error', f);
         break;
     }
@@ -235,11 +275,50 @@
   $('user').addEventListener('change', e => { userName = e.target.value.trim(); localStorage.setItem('songlink.user', userName); });
   $('btn-hreload').onclick = () => send({ type: 'cmd', id: uuid(), action: 'history.list', args: { limit: 20 } });
 
+  // 音量条 / 静音按钮
+  function sendVolume(level) {
+    send({ type: 'cmd', id: uuid(), action: 'volume', args: { level } });
+  }
+  $('vol').addEventListener('input', e => {
+    const pct = parseInt(e.target.value, 10);
+    const level = Math.max(0, Math.min(1, pct / 100));
+    volumeMuted = (level === 0);
+    $('vol-num').textContent = pct;
+    $('btn-mute').textContent = level > 0 ? '🔊' : '🔇';
+    if (level > 0) preMuteVolume = level;
+    localStorage.setItem('songlink.volume', String(pct));
+    // 拖动中节流发送(每 80ms 一次),减少 cmd 风暴
+    if (sendVolume._t) clearTimeout(sendVolume._t);
+    sendVolume._t = setTimeout(() => sendVolume(level), 80);
+  });
+  $('btn-mute').onclick = () => {
+    if (volumeMuted || cur.volume === 0) {
+      const restore = preMuteVolume > 0 ? preMuteVolume : 1.0;
+      volumeMuted = false;
+      const pct = Math.round(restore * 100);
+      $('vol').value = pct;
+      $('vol-num').textContent = pct;
+      $('btn-mute').textContent = '🔊';
+      localStorage.setItem('songlink.volume', String(pct));
+      sendVolume(restore);
+    } else {
+      preMuteVolume = cur.volume || 1.0;
+      volumeMuted = true;
+      $('vol').value = 0;
+      $('vol-num').textContent = 0;
+      $('btn-mute').textContent = '🔇';
+      localStorage.setItem('songlink.volume', '0');
+      sendVolume(0);
+    }
+  };
+
   // 队列操作委托
   $('queue-list').addEventListener('click', e => {
     const btn = e.target.closest('button'); if (!btn) return;
     const i = parseInt(btn.dataset.i, 10);
-    if (btn.dataset.act === 'top') send({ type: 'cmd', id: uuid(), action: 'queue.top', args: { index: i } });
+    if (btn.dataset.act === 'up') send({ type: 'cmd', id: uuid(), action: 'queue.move', args: { from: i, to: i - 1 } });
+    else if (btn.dataset.act === 'down') send({ type: 'cmd', id: uuid(), action: 'queue.move', args: { from: i, to: i + 1 } });
+    else if (btn.dataset.act === 'top') send({ type: 'cmd', id: uuid(), action: 'queue.top', args: { index: i } });
     else if (btn.dataset.act === 'remove') send({ type: 'cmd', id: uuid(), action: 'queue.remove', args: { index: i } });
   });
 
@@ -300,6 +379,16 @@
 
   // 启动
   if (userName) { $('user').value = userName; $('user-wrap').hidden = false; }
+  // 恢复音量
+  const savedVol = parseInt(localStorage.getItem('songlink.volume') || '100', 10);
+  if (!Number.isNaN(savedVol) && savedVol >= 0 && savedVol <= 100) {
+    $('vol').value = savedVol;
+    $('vol-num').textContent = savedVol;
+    $('btn-mute').textContent = savedVol > 0 ? '🔊' : '🔇';
+    preMuteVolume = savedVol / 100;
+    cur.volume = preMuteVolume;
+    if (savedVol === 0) volumeMuted = true;
+  }
   if (pinCode) connect(pinCode);
   else $('pin-wrap').hidden = false;
   setConn('disconnected');

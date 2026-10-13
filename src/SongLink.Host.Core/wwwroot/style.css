@@ -66,9 +66,23 @@ main {
 .dot.playing { background: #4caf50; }
 .dot.paused { background: #ff9800; }
 
-.controls { display: flex; gap: 12px; justify-content: center; }
+.controls { display: flex; gap: 12px; justify-content: center; align-items: center; flex-wrap: wrap; }
 .controls button.primary { width: 56px; height: 56px; font-size: 22px; }
 .controls button { width: 44px; height: 44px; font-size: 18px; }
+.controls .volume { display: flex; gap: 8px; align-items: center; margin-left: 12px; }
+.controls .volume button { width: 36px; height: 36px; font-size: 16px; }
+.controls input[type=range] {
+  -webkit-appearance: none; appearance: none;
+  width: 140px; height: 6px; background: #3a3f4a; border-radius: 3px; outline: none;
+}
+.controls input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; background: #4a90e2; border-radius: 50%; cursor: pointer;
+}
+.controls input[type=range]::-moz-range-thumb {
+  width: 16px; height: 16px; background: #4a90e2; border-radius: 50%; cursor: pointer; border: none;
+}
+.controls #vol-num { min-width: 32px; font-variant-numeric: tabular-nums; font-size: 12px; }
 
 #lyrics {
   background: #1a1d24; padding: 16px; border-radius: 8px;

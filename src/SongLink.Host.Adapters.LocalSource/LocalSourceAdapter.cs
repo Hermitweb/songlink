@@ -33,7 +33,7 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     }
 
     public string AppId => "localsource";
-    public AdapterCapability Caps => AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search;
+    public AdapterCapability Caps => AdapterCapability.ReadMeta | AdapterCapability.Transport | AdapterCapability.Pick | AdapterCapability.Search | AdapterCapability.Volume;
 
     /// <summary>读取当前播放真值（NAudio 状态 + SMTC 反馈）。</summary>
     public Task<NowPlaying?> ReadNowPlaying(CancellationToken ct = default)
@@ -139,13 +139,23 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     {
         if (_disposed) return Array.Empty<SearchResultItem>();
         var tracks = await Task.Run(() => _library.Search(kw), ct);
-        return tracks.Select(t => new SearchResultItem 
-        { 
-            Title = t.Title, 
-            Artist = t.Artist, 
+        return tracks.Select(t => new SearchResultItem
+        {
+            Title = t.Title,
+            Artist = t.Artist,
             Album = "本地",
             Dur = 180.0 // 默认值，真实时长需音频分析
         }).ToList();
+    }
+
+    // NAudio WaveOutEvent.Volume 控制输出采样音量(0.0~1.0)。WaveOutEvent 自身默认 1.0。
+    public Task<double> GetVolume(CancellationToken ct = default)
+        => Task.FromResult(_disposed ? 1.0 : _waveOut.Volume);
+    public Task<bool> SetVolume(double volume, CancellationToken ct = default)
+    {
+        if (_disposed) return Task.FromResult(false);
+        _waveOut.Volume = Math.Clamp((float)volume, 0f, 1f);
+        return Task.FromResult(true);
     }
 
     private void RegisterSmtcSession()
