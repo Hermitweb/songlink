@@ -191,7 +191,7 @@ components:
       type: object
       properties:
         type: { type: string, enum: [cmd] }
-        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, setSourceMode, calibrate, getLyric] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, setSourceMode, calibrate, getLyric, trending] }
         args: { type: object }";
                 
                 var bytes = Encoding.UTF8.GetBytes(yamlContent);
@@ -409,6 +409,10 @@ components:
                 SendTo(conn, new SearchResults { Ref = c.Id ?? "", Query = kw, Results = results });
                 break;
 
+            case Cmd c when c.Action == "trending":
+                HandleTrending(c, conn);
+                break;
+
             case Cmd c when c.Action == "calibrate":
                 int offMs = 0;
                 try { offMs = c.Args?["lyricOffsetMs"]?.GetValue<int>() ?? 0; } catch { offMs = 0; }
@@ -522,7 +526,7 @@ components:
         catch { return int.TryParse(node.ToString(), out var v) ? v : null; }
     }
 
-    /// <summary>处理 queue.* 命令（契约 §3.6）。返回是否成功。</summary>
+    /// <summary>处理 queue.* 命令（契约 §3.6 + 落雪风格增强）。返回是否成功。</summary>
     private bool HandleQueue(Cmd c)
     {
         switch (c.Action)
@@ -536,9 +540,39 @@ components:
                 var ti = SafeInt(c.Args?["index"]); return ti is not null && _queue.Top(ti.Value);
             case "queue.clear":
                 _queue.Clear(); return true;
+            case "queue.shuffle":
+                _queue.Shuffle(); return true;
+            case "queue.unshuffle":
+                _queue.Unshuffle(); return true;
             default:
                 return false;
         }
+    }
+
+    /// <summary>流行/热门曲库（兜底,无网络依赖,纯静态预设）。Web 面板「热门」区用。</summary>
+    private static readonly (string Title, string Artist)[] Trending =
+    {
+        ("晴天", "周杰伦"), ("稻香", "周杰伦"), ("七里香", "周杰伦"),
+        ("Yellow", "Coldplay"), ("Shape of You", "Ed Sheeran"),
+        ("演员", "薛之谦"), ("告白气球", "周杰伦"), ("青花瓷", "周杰伦"),
+        ("后来", "刘若英"), ("那些年", "胡夏"), ("分手快乐", "梁静茹"),
+        ("一生所爱", "卢冠廷"), ("海阔天空", "Beyond"), ("真的爱你", "Beyond"),
+        ("光辉岁月", "Beyond"), ("千千阙歌", "陈慧娴"), ("吻别", "张学友"),
+        ("十年", "陈奕迅"), ("浮夸", "陈奕迅"), ("红玫瑰", "陈奕迅"),
+        ("Bad Habit", "Steve Lacy"), ("Anti-Hero", "Taylor Swift"),
+        ("孤勇者", "陈奕迅"), ("起风了", "买辣椒也用券"), ("踏山河", "是七叔呢"),
+    };
+
+    /// <summary>处理 trending 命令 — 返回 N 条热门(默认 20, 上限 50)。</summary>
+    private void HandleTrending(Cmd c, ClientConn conn)
+    {
+        int n = SafeInt(c.Args?["limit"]) ?? 20;
+        if (n < 1) n = 20;
+        if (n > 50) n = 50;
+        var items = Trending.Take(n)
+            .Select(t => new SearchResultItem { Title = t.Title, Artist = t.Artist })
+            .ToList();
+        SendTo(conn, new SearchResults { Ref = c.Id ?? "", Query = "trending", Results = items });
     }
 
     private EventFrame BuildQueueEvent()

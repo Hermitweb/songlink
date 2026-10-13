@@ -36,7 +36,7 @@ public class WebPanelStaticTests : IDisposable
         var resp = await _http.GetAsync("");
         Assert.Equal(HttpStatusCode.OK, resp.StatusCode);
         var html = await resp.Content.ReadAsStringAsync();
-        Assert.Contains("SongLink 桌面控制面板", html);
+        Assert.Contains("SongLink 点歌台", html);
         Assert.Contains("/static/style.css", html);
         Assert.Contains("/static/app.js", html);
     }
