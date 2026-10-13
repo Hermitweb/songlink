@@ -9,12 +9,15 @@ namespace SongLink.Host.Adapters.Smtc;
 /// 跨 App 稳定，但**不能点任意歌**（Pick 返回 false，交给专属适配器）。
 ///
 /// #10 事件驱动：只在首次 EnsureInitAsync 调一次 RequestAsync 并订阅
-///   mgr.CurrentChanged / session.MediaPropertiesChanged / session.PlaybackInfoChanged，
+///   mgr.CurrentSessionChanged / session.MediaPropertiesChanged / session.PlaybackInfoChanged，
 ///   把元数据/状态缓存下来；ReadNowPlaying() 仅读缓存并按墙钟外推进度（纯本地、无 WinRT 调用），
 ///   因此 MediaBus 的每拍轮询变廉价，不再每拍 RequestAsync。
 ///
-/// 依赖 Windows.Media.Control（WinRT），需开发机带 Windows SDK 投影 pack 才能编译。
 /// 与 FakeAdapter 实现同一 IPlayerAdapter，Host.Core 无需改动即可从假适配器切到真实 SMTC。
+///
+/// 注：Windows.Media.Control 的真实 API 全部是异步取值——元数据走
+/// TryGetMediaPropertiesAsync()，播放信息走 GetPlaybackInfo()，时间轴走 GetTimelineProperties()；
+/// 事件是 CurrentSessionChanged（不是 CurrentChanged），切歌是 TrySkipNextAsync（不是 Ahead）。
 /// </summary>
 public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
 {
@@ -33,6 +36,11 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
     private DateTime _baseUtc = DateTime.UtcNow;
 
     private Task? _initTask;
+
+    // 事件委托需要成对订阅/退订，故持有引用
+    private TypedEventHandler<GlobalSystemMediaTransportControlsSessionManager, CurrentSessionChangedEventArgs>? _onCurrentSessionChanged;
+    private TypedEventHandler<GlobalSystemMediaTransportControlsSession, MediaPropertiesChangedEventArgs>? _onMediaPropsChanged;
+    private TypedEventHandler<GlobalSystemMediaTransportControlsSession, PlaybackInfoChangedEventArgs>? _onPlaybackInfoChanged;
 
     public Task<NowPlaying?> ReadNowPlaying(CancellationToken ct = default)
     {
@@ -53,7 +61,7 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
                 Title = _title, Artist = _artist,
                 Album = string.IsNullOrEmpty(_album) ? null : _album,
                 Pos = Math.Max(0, Math.Round(pos, 2)),
-                Dur = 0, // SMTC 不直接给时长，由上层歌词/元数据补
+                Dur = _dur,
                 Status = _status,
                 ArtRef = _hasThumb ? "smtc:thumb" : null,
                 SourceMode = "PC_LOCAL"
@@ -61,55 +69,89 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
         }
     }
 
+    private double _dur;
+
     private async Task EnsureInitAsync()
     {
         var mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
-        mgr.CurrentChanged += OnCurrentChanged;
+        _onCurrentSessionChanged = (sender, _) =>
+        {
+            try { HookSession(sender.GetCurrentSession()); } catch { /* 会话切换竞态，忽略本拍 */ }
+        };
+        mgr.CurrentSessionChanged += _onCurrentSessionChanged;
         lock (_lock) { _mgr = mgr; }
         HookSession(mgr.GetCurrentSession());
         _init = true;
     }
 
-    private void OnCurrentChanged(GlobalSystemMediaTransportControlsSessionManager sender, object args)
-    {
-        try { HookSession(sender.GetCurrentSession()); } catch { /* 会话切换竞态，忽略本拍 */ }
-    }
-
     private void HookSession(GlobalSystemMediaTransportControlsSession? session)
     {
-        lock (_lock)
+        var old = _session;
+        if (old is not null)
         {
-            if (_session is not null)
-            {
-                _session.MediaPropertiesChanged -= OnSessionChanged;
-                _session.PlaybackInfoChanged -= OnSessionChanged;
-            }
-            _session = session;
-            if (_session is not null)
-            {
-                _session.MediaPropertiesChanged += OnSessionChanged;
-                _session.PlaybackInfoChanged += OnSessionChanged;
-            }
+            if (_onMediaPropsChanged is not null) old.MediaPropertiesChanged -= _onMediaPropsChanged;
+            if (_onPlaybackInfoChanged is not null) old.PlaybackInfoChanged -= _onPlaybackInfoChanged;
+            _onMediaPropsChanged = null;
+            _onPlaybackInfoChanged = null;
         }
-        RefreshCache();
+
+        _session = session;
+        if (session is not null)
+        {
+            _onMediaPropsChanged = (_, _) => _ = RefreshCacheAsync();
+            _onPlaybackInfoChanged = (_, _) => _ = RefreshCacheAsync();
+            session.MediaPropertiesChanged += _onMediaPropsChanged;
+            session.PlaybackInfoChanged += _onPlaybackInfoChanged;
+        }
+        _ = RefreshCacheAsync();
     }
 
-    private void OnSessionChanged(GlobalSystemMediaTransportControlsSession sender, object args) => RefreshCache();
-
-    private void RefreshCache()
+    /// <summary>从当前会话拉一次元数据/状态快照并写入缓存。事件线程上以 fire-and-forget 调用。</summary>
+    private async Task RefreshCacheAsync()
     {
         var s = _session; // 读引用（原子）
-        if (s is null) { lock (_lock) { _title = _artist = _album = ""; _status = "stopped"; _hasThumb = false; _basePos = 0; } return; }
-        var mp = s.MediaProperties;
-        var pi = s.PlaybackInfo;
+        if (s is null)
+        {
+            lock (_lock) { _title = _artist = _album = ""; _status = "stopped"; _hasThumb = false; _basePos = 0; _dur = 0; }
+            return;
+        }
+
+        string title = "", artist = "", album = "", status = "stopped";
+        bool hasThumb = false;
+        double pos = 0, dur = 0;
+
+        try
+        {
+            var mp = await s.TryGetMediaPropertiesAsync().AsTask(); // 可能返回 null（读取失败）
+            if (mp is not null)
+            {
+                title = mp.Title ?? "";
+                artist = mp.Artist ?? "";
+                album = mp.AlbumTitle ?? "";
+                hasThumb = mp.Thumbnail is not null;
+            }
+
+            var pi = s.GetPlaybackInfo();
+            status = MapStatus(pi?.PlaybackStatus ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped);
+
+            var tp = s.GetTimelineProperties();
+            if (tp is not null)
+            {
+                pos = tp.Position.TotalSeconds;
+                dur = Math.Max(0, (tp.EndTime - tp.StartTime).TotalSeconds);
+            }
+        }
+        catch
+        {
+            // 会话在读取过程中被关闭/切换：保留上一拍缓存，不清空
+            return;
+        }
+
         lock (_lock)
         {
-            _title = mp.Title ?? "";
-            _artist = mp.Artist ?? "";
-            _album = mp.Album ?? "";
-            _hasThumb = s.ThumbnailProperties is not null;
-            _status = MapStatus(pi.PlaybackStatus);
-            _basePos = pi.PlaybackPosition.TotalSeconds;
+            _title = title; _artist = artist; _album = album;
+            _status = status; _hasThumb = hasThumb;
+            _basePos = pos; _dur = dur;
             _baseUtc = DateTime.UtcNow;
         }
     }
@@ -132,7 +174,7 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
 
     public async Task<bool> Play(CancellationToken ct = default) => await Run(Session, x => x.TryPlayAsync());
     public async Task<bool> Pause(CancellationToken ct = default) => await Run(Session, x => x.TryPauseAsync());
-    public async Task<bool> Next(CancellationToken ct = default) => await Run(Session, x => x.TrySkipNextAheadAsync());
+    public async Task<bool> Next(CancellationToken ct = default) => await Run(Session, x => x.TrySkipNextAsync());
     public async Task<bool> Prev(CancellationToken ct = default) => await Run(Session, x => x.TrySkipPreviousAsync());
     public async Task<bool> Stop(CancellationToken ct = default) => await Run(Session, x => x.TryStopAsync());
 
@@ -145,14 +187,19 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
 
     public void Dispose()
     {
-        lock (_lock)
+        var mgr = _mgr;
+        var session = _session;
+        if (mgr is not null && _onCurrentSessionChanged is not null) mgr.CurrentSessionChanged -= _onCurrentSessionChanged;
+        if (session is not null)
         {
-            if (_mgr is not null) _mgr.CurrentChanged -= OnCurrentChanged;
-            if (_session is not null)
-            {
-                _session.MediaPropertiesChanged -= OnSessionChanged;
-                _session.PlaybackInfoChanged -= OnSessionChanged;
-            }
+            if (_onMediaPropsChanged is not null) session.MediaPropertiesChanged -= _onMediaPropsChanged;
+            if (_onPlaybackInfoChanged is not null) session.PlaybackInfoChanged -= _onPlaybackInfoChanged;
         }
+        _onCurrentSessionChanged = null;
+        _onMediaPropsChanged = null;
+        _onPlaybackInfoChanged = null;
+        _mgr = null;
+        _session = null;
+        _init = false;
     }
 }

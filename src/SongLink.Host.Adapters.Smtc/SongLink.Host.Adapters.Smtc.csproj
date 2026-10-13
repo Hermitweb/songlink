@@ -17,9 +17,14 @@
   </ItemGroup>
 
   <!--
-    ⚠ 需要构建机装有 Windows SDK 投影 pack（Visual Studio「Windows 应用程序开发」工作负载 / Windows App SDK）。
-    本机精简 .NET SDK 缺该 pack，无法在此编译；在标准开发机上 dotnet build 即可通过。
-    见 spike/smtc-probe/README.md 的“环境准备”。
+    目标框架 net8.0-windows10.0.19041.0 会让 .NET SDK 自动把
+    Microsoft.Windows.SDK.NET.Ref(WinRT 投影)作为 targeting pack 从 NuGet 拉下来
+    —— 不需要装 VS「Windows 应用开发」工作负载,也不需要独立 Windows SDK。
+    参见 obj/project.assets.json 的 downloadDependencies。
+
+    曾经本工程长期编译不过,原因是 SmtcAdapter.cs 照着不存在的 API 写的
+    (CurrentChanged / MediaProperties / PlaybackInfo 属性 / TrySkipNextAheadAsync /
+    ThumbnailProperties),不是环境缺 pack。已于 d2b9f5a 之后按真实 WinRT API 重写。
   -->
 
 </Project>
