@@ -107,14 +107,26 @@ public sealed class HostServer : IAsyncDisposable
         }
     }
 
-    /// <summary>GET /art/{ref} 下发封面；POST /import?title=&artist= 导入音源；/swagger 返回 OpenAPI JSON；/docs 返回 Swagger UI。</summary>
+    /// <summary>GET / 桌面 Web 面板；GET /static/* 静态资源；GET /art/{ref} 封面；POST /import 导入音源；/docs Swagger UI。</summary>
     private void ServeHttp(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "";
         try
         {
+            // 0. 桌面 Web 面板 (默认首页 + 静态资源)
+            if (path == "/" || path == "/index.html")
+            {
+                ServeStaticFile(ctx, "wwwroot/index.html", "text/html; charset=utf-8");
+            }
+            else if (path.StartsWith("/static/", StringComparison.Ordinal))
+            {
+                var rel = path["/static/".Length..];
+                // 路径穿越防护 — 不允许 ..
+                if (rel.Contains("..", StringComparison.Ordinal)) { ctx.Response.StatusCode = 400; return; }
+                ServeStaticFile(ctx, "wwwroot/" + rel, MimeFromExt(rel));
+            }
             // 1. Swagger UI 文档
-            if (path == "/docs")
+            else if (path == "/docs")
             {
                 var htmlContent = @"<!DOCTYPE html>
 <html lang='zh-CN'>
@@ -179,7 +191,7 @@ components:
       type: object
       properties:
         type: { type: string, enum: [cmd] }
-        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, setSourceMode, calibrate] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, setSourceMode, calibrate, getLyric] }
         args: { type: object }";
                 
                 var bytes = Encoding.UTF8.GetBytes(yamlContent);
@@ -411,6 +423,15 @@ components:
                 }
                 break;
 
+            case Cmd c when c.Action == "getLyric":
+                // 桌面 Web 面板用 — Android 走 LocalLyric 服务直接拿,这里给 Web 兜底。
+                var gTitle = SafeStr(c.Args?["title"]) ?? "";
+                var gArtist = SafeStr(c.Args?["artist"]) ?? "";
+                var lyric = _lyric.TryGet(gTitle, gArtist);
+                SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                if (lyric is not null) SendTo(conn, lyric);
+                break;
+
             case Cmd c:
                 bool ok = c.Action switch
                 {
@@ -542,7 +563,37 @@ components:
         }
         catch (OperationCanceledException) { }
         catch (WebSocketException) { }
-        catch { /* 发送异常：断开由接收循环清理 */ }
+        catch { /* 发送异常:断开由接收循环清理 */ }
+    }
+
+    /// <summary>从 AppContext.BaseDirectory 读文件并下发,文件缺失 → 404。</summary>
+    private void ServeStaticFile(HttpListenerContext ctx, string relPath, string mime)
+    {
+        var full = Path.Combine(AppContext.BaseDirectory, relPath);
+        if (!File.Exists(full)) { ctx.Response.StatusCode = 404; return; }
+        var bytes = File.ReadAllBytes(full);
+        ctx.Response.StatusCode = 200;
+        ctx.Response.ContentType = mime;
+        ctx.Response.ContentLength64 = bytes.Length;
+        ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+    }
+
+    private static string MimeFromExt(string rel)
+    {
+        var ext = Path.GetExtension(rel).ToLowerInvariant();
+        return ext switch
+        {
+            ".html" or ".htm" => "text/html; charset=utf-8",
+            ".css"            => "text/css; charset=utf-8",
+            ".js"             => "application/javascript; charset=utf-8",
+            ".json"           => "application/json; charset=utf-8",
+            ".png"            => "image/png",
+            ".jpg" or ".jpeg" => "image/jpeg",
+            ".svg"            => "image/svg+xml",
+            ".ico"            => "image/x-icon",
+            ".txt"            => "text/plain; charset=utf-8",
+            _                 => "application/octet-stream"
+        };
     }
 
     public async ValueTask DisposeAsync()

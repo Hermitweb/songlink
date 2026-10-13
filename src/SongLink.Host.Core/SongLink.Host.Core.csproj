@@ -40,6 +40,7 @@
     <None Update="art\*.png" CopyToOutputDirectory="PreserveNewest" />
     <None Update="art\*.jpg" CopyToOutputDirectory="PreserveNewest" />
     <None Update="krc\*.krc" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

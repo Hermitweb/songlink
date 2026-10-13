@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SongLink 桌面控制面板</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>SongLink</h1>
+  <div id="conn" class="badge disconnected">未连接</div>
+  <div id="pin-wrap" hidden>
+    <label>PIN <input id="pin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位"></label>
+    <button id="btn-connect">连接</button>
+  </div>
+</header>
+
+<main>
+  <section id="now">
+    <div class="art">
+      <img id="art" alt="" src="" onerror="this.style.display='none'">
+      <div class="art-placeholder" id="art-placeholder">♪</div>
+    </div>
+    <div class="meta">
+      <div id="title" class="title">—</div>
+      <div id="artist" class="artist">—</div>
+      <div id="album" class="album"></div>
+      <div class="status">
+        <span id="status" class="dot">·</span>
+        <span id="mode">—</span>
+        <span id="time">0:00 / 0:00</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="controls">
+    <button id="btn-prev" title="上一首">⏮</button>
+    <button id="btn-play" title="播放/暂停" class="primary">▶</button>
+    <button id="btn-next" title="下一首">⏭</button>
+  </section>
+
+  <section id="lyrics">
+    <div class="empty">歌词加载中…</div>
+  </section>
+
+  <section id="search">
+    <label>搜索 <input id="kw" placeholder="歌名 / 歌手"></label>
+    <button id="btn-search">搜</button>
+    <div id="results"></div>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
