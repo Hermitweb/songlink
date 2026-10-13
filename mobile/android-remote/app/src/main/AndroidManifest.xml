@@ -3,19 +3,25 @@
 
     <!-- 深色模式支持 -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    
+    <!-- 启动通知 (Android 8.0+ 要求 channel) -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- 网络权限 -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    
+
     <!-- 录音权限（音频串流需要） -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
-    
+
     <!-- 蓝牙权限（RFCOMM 配对需要） -->
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT" />
-    
+
+    <!-- 前台服务：AudioPlaybackCapture 在 Android Q+ 必须在 mediaProjection 类型的前台服务里 -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
     <application
         android:name=".SongLinkApplication"
         android:allowBackup="true"
@@ -26,7 +32,7 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:theme="@style/Theme.SongLinkRemote">
-        
+
         <activity
             android:name=".MainActivity"
             android:exported="true"
@@ -38,6 +44,20 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- AudioPlaybackCapture 授权 Activity(架构 §3.9 audio:start 真机解锁) -->
+        <activity
+            android:name=".ui.capture.CaptureProjectionActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|smallestScreenSize"
+            android:theme="@style/Theme.SongLinkRemote" />
+
+        <!-- 前台服务持有 MediaProjection token + 启 AudioRecord (Android Q+ 要求) -->
+        <service
+            android:name=".data.audio.ProjectionService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
     </application>
-    
+
 </manifest>

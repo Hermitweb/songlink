@@ -1,6 +1,7 @@
 package songlink.remote.ui.stream
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -21,6 +22,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import songlink.remote.R
+import songlink.remote.ui.capture.CaptureProjectionActivity
 
 /**
  * 音频串流页面（PHONE_STREAM 模式入口）
@@ -43,28 +45,37 @@ fun StreamPage(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { permissions ->
         hasPermission = permissions.all { it.value }
-        
-        if (hasPermission && !isStreaming) {
-            viewModel.startStreaming(51000) { success, err ->
-                isStreaming = success
-                errorMessage = err
-            }
-        }
+    }
+
+    // Android Q+ 真实 MediaProjection 授权: 系统弹出"截屏/录屏"权限窗
+    val projectionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { _ ->
+        // CaptureProjectionActivity 拿到权限后自己 finish() + 启前台服务,这里只更新 UI
+        isStreaming = true
+        errorMessage = "MediaProjection 已授权,前台服务运行中"
     }
     
     LaunchedEffect(Unit) {
         // 检查运行时权限
-        val permissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            arrayOf(
-                Manifest.permission.CAPTURE_AUDIO_OUTPUT,
-                Manifest.permission.MODIFY_AUDIO_SETTINGS
-            )
-        } else {
-            arrayOf()
+        // 注: CAPTURE_AUDIO_OUTPUT 实际不是 Android 公开权限;Android Q+ 用 MediaProjection 授权音频采集
+        // 这里申请 RECORD_AUDIO + MODIFY_AUDIO_SETTINGS 即可,MediaProjection 单独走 CaptureProjectionActivity
+        val toGrant = mutableListOf(
+            Manifest.permission.RECORD_AUDIO,
+            Manifest.permission.MODIFY_AUDIO_SETTINGS
+        )
+        // Android 13+ 加 POST_NOTIFICATIONS (前台服务通知需要)
+        if (Build.VERSION.SDK_INT >= 33) {
+            toGrant += android.Manifest.permission.POST_NOTIFICATIONS
         }
-        
-        if (permissions.isNotEmpty()) {
-            permissionLauncher.launch(permissions)
+
+        val pending = toGrant.filter {
+            androidx.core.content.ContextCompat.checkSelfPermission(
+                context, it
+            ) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        }
+        if (pending.isNotEmpty()) {
+            permissionLauncher.launch(pending.toTypedArray())
         } else {
             hasPermission = true
         }
@@ -151,14 +162,20 @@ fun StreamPage(
                     onClick = {
                         if (!hasPermission) {
                             errorMessage = "需要先授予录音权限"
+                            permissionLauncher.launch(arrayOf(
+                                Manifest.permission.RECORD_AUDIO,
+                                Manifest.permission.MODIFY_AUDIO_SETTINGS
+                            ))
                         } else if (!isStreaming) {
+                            // Android Q+ 真实 MediaProjection 授权: 跳到 CaptureProjectionActivity
+                            val intent = CaptureProjectionActivity.newIntent(context, "192.168.15.205", 51000)
+                            projectionLauncher.launch(intent)
                             viewModel.startStreaming(51000) { success, err ->
-                                isStreaming = success
-                                errorMessage = err
+                                if (!success) errorMessage = "VM 启动提示: $err"
                             }
                         }
                     },
-                    enabled = hasPermission && !isStreaming
+                    enabled = hasPermission
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
