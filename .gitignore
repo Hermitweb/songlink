@@ -39,3 +39,10 @@ captures/
 
 # Gradle 迭代日志
 build-log-*.txt
+
+# 桌面应用发布产物(71MB 单文件,本地构建一次即可,不入仓)
+dist/
+
+# 截图(本地验证用,不入仓)
+scripts/desktop-screenshot.png
+scripts/desktop-fullscreen.png

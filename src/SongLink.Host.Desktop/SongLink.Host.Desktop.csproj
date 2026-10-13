@@ -1,0 +1,32 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SongLink.Host.Desktop</RootNamespace>
+    <AssemblyName>SongLink</AssemblyName>
+    <ApplicationIcon></ApplicationIcon>
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!--
+      Self-contained single-file 发布属性不放在默认里,避免 SDK 报 NETSDK1150
+      （自包含可执行不能引用另一个非自包含 exe）。
+      走 scripts/publish-desktop.ps1 显式 dotnet publish 时再加这些开关。
+    -->
+    <PublishSingleFile>true</PublishSingleFile>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2277.37" />
+  </ItemGroup>
+
+</Project>
