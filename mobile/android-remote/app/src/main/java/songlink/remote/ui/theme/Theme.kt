@@ -45,7 +45,9 @@ fun SongLinkTheme(
 
     MaterialTheme(
         colorScheme = colorScheme,
-        typography = Typography,
+        // 必须显式限定：kotlin.text.Typography（stdlib 里的废弃类）与
+        // androidx.compose.material3.Typography 撞名，未限定时会解析到前者
+        typography = androidx.compose.material3.Typography(),
         content = content
     )
 }

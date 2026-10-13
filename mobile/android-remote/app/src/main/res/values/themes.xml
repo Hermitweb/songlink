@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 纯 Compose 应用：只提供一个无标题、无 ActionBar 的壳主题，
+         实际配色由 songlink.remote.ui.theme.SongLinkTheme (Compose) 决定。 -->
+    <style name="Theme.SongLinkRemote" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowBackground">@android:color/white</item>
+    </style>
+</resources>

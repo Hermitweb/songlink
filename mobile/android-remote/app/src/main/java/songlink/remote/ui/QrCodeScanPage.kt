@@ -1,9 +1,9 @@
 package songlink.remote.ui
 
+import android.graphics.BitmapFactory
 import android.net.Uri
-import androidx.camera.core.CameraSelector
-import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -12,57 +12,60 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import com.journeyapps.bardecoder.BarcodeResult
-import com.journeyapps.barcodescanner.DecodedBitmap
-import com.journeyapps.barcodescanner.DefaultDecoder
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import org.tensorflow.lite.Interpreter
-import java.io.FileInputStream
-import java.nio.MappedByteBuffer
-import java.nio.channels.FileChannel
+import com.google.zxing.BarcodeFormat
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.LuminanceSource
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.qrcode.QRCodeReader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * QR Code 扫描页面 - 自动填充连接信息
+ *
+ * 注意（AI 生成占位）：摄像头预览尚未接入 CameraX，
+ * 当前页面只负责权限申请 + 展示 UI；真正解码走 [decodeQRCode] 的 ZXing 路径。
  */
-@OptIn(ExperimentalPermissionsApi::class)
+@OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun QrCodeScanPage(
     modifier: Modifier = Modifier,
-    viewModel: PairViewModel = hiltViewModel(),
     onScanSuccess: (String, String) -> Unit, // hostUrl, pin
     navController: NavController
 ) {
     val context = LocalContext.current
-    
+
     // Camera permission
     val cameraPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
-    
+
     var capturedUri by remember { mutableStateOf<Uri?>(null) }
     var scanning by remember { mutableStateOf(true) }
     var decodedData by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
-    
+
     LaunchedEffect(capturedUri) {
         capturedUri?.let { uri ->
             try {
-                val inputStream = context.contentResolver.openInputStream(uri)
-                val bitmap = BitmapFactory.decodeStream(inputStream)
-                
+                val bitmap = withContext(Dispatchers.IO) {
+                    context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) }
+                }
+
                 // Decode QR code
-                val decoder = DefaultDecoder()
                 val result = decodeQRCode(bitmap)
-                
-                if (result != null && result.format == BarcodeResult.QR_CODE) {
+
+                if (result != null && result.barcodeFormat == BarcodeFormat.QR_CODE) {
                     decodedData = result.text
-                    
+
                     // Parse JSON data
                     val qrData = parseQrData(result.text)
                     if (qrData != null) {
@@ -79,7 +82,7 @@ fun QrCodeScanPage(
             }
         }
     }
-    
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -94,23 +97,23 @@ fun QrCodeScanPage(
                 }
             }
         )
-        
+
         Spacer(modifier = Modifier.height(16.dp))
-        
+
         Text(
             text = "请使用手机摄像头扫描二维码",
             style = MaterialTheme.typography.bodyLarge,
             modifier = Modifier.padding(bottom = 8.dp)
         )
-        
+
         Text(
             text = "二维码应包含 Host URL 和 PIN 码",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        
+
         Spacer(modifier = Modifier.height(32.dp))
-        
+
         if (!cameraPermission.status.isGranted) {
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -126,13 +129,13 @@ fun QrCodeScanPage(
                         modifier = Modifier.size(48.dp),
                         tint = MaterialTheme.colorScheme.primary
                     )
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Text("需要相机权限以扫描二维码")
-                    
+
                     Spacer(modifier = Modifier.height(8.dp))
-                    
+
                     Button(onClick = { cameraPermission.launchPermissionRequest() }) {
                         Text("授予权限")
                     }
@@ -155,7 +158,7 @@ fun QrCodeScanPage(
                         modifier = Modifier.padding(16.dp)
                     )
                 }
-                
+
                 // Overlay for QR scan area (简化版)
                 Box(
                     modifier = Modifier
@@ -170,9 +173,9 @@ fun QrCodeScanPage(
                     )
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             // Error display
             if (error != null) {
                 Card(
@@ -185,19 +188,19 @@ fun QrCodeScanPage(
                         color = MaterialTheme.colorScheme.onErrorContainer
                     )
                 }
-                
+
                 Spacer(modifier = Modifier.height(16.dp))
-                
-                Button(onClick = { 
+
+                Button(onClick = {
                     error = null
-                    scannedUri = null
+                    capturedUri = null
                 }) {
                     Text("重新扫描")
                 }
             }
-            
+
             Spacer(modifier = Modifier.weight(1f))
-            
+
             Button(
                 onClick = { /* 手动输入逻辑 */ },
                 enabled = false
@@ -217,9 +220,9 @@ data class QrData(
 fun parseQrData(json: String): QrData? {
     try {
         val jsonStr = Json.parseToJsonElement(json).jsonObject
-        val host = jsonStr["host"]?.jsonPrimitive.content
-        val pin = jsonStr["pin"]?.jsonPrimitive.content
-        
+        val host = jsonStr["host"]?.jsonPrimitive?.content
+        val pin = jsonStr["pin"]?.jsonPrimitive?.content
+
         return when {
             host != null && pin != null -> QrData(host, pin)
             else -> null
@@ -230,25 +233,46 @@ fun parseQrData(json: String): QrData? {
     }
 }
 
-// Simplified QR decoding (replace with real ZXing implementation)
-fun decodeQRCode(bitmap: android.graphics.Bitmap?): Result<BarcodeResult?> {
-    // Placeholder: In production, use ZXing or ML Kit
+/**
+ * 用 ZXing core 解码 Bitmap 中的二维码。
+ * 返回 null 表示解码失败（AI 生成：替换原文件中不存在的 BitmapLuminanceSource/BinaryBitmap 调用）。
+ */
+fun decodeQRCode(bitmap: android.graphics.Bitmap?): com.google.zxing.Result? {
+    if (bitmap == null) return null
     return try {
-        val zxingReader = com.google.zxing.qrcode.QRCodeReader()
         val source = BitmapLuminanceSource(bitmap)
-        val binaryBitmap = BinaryBitmap(TrueBarcodeHandler(source))
-        val result = zxingReader.decode(binaryBitmap)
-        Result.success(result)
+        QRCodeReader().decode(BinaryBitmap(HybridBinarizer(source)))
     } catch (e: Exception) {
-        Result.failure(e)
+        e.printStackTrace()
+        null
     }
 }
 
-// Mock classes for demonstration
-data class Result<T>(private val value: T, private val exception: Throwable? = null) {
-    companion object {
-        fun <T> success(value: T) = Result(value)
-        fun <T> failure(exception: Throwable) = Result<T?>(null, exception) as Result<T>
+/** 把 Bitmap 转成 ZXing 的灰度源 */
+private class BitmapLuminanceSource(bitmap: android.graphics.Bitmap) :
+    LuminanceSource(bitmap.width, bitmap.height) {
+
+    private val luminances: ByteArray = run {
+        val w = bitmap.width
+        val h = bitmap.height
+        val pixels = IntArray(w * h)
+        bitmap.getPixels(pixels, 0, w, 0, 0, w, h)
+        ByteArray(w * h) { i ->
+            val p = pixels[i]
+            val r = (p shr 16) and 0xFF
+            val g = (p shr 8) and 0xFF
+            val b = p and 0xFF
+            // Rec.601 luma
+            ((r * 33 + g * 34 + b * 33) / 100).toByte()
+        }
     }
-    val exception get() = exception
+
+    override fun getRow(y: Int, row: ByteArray?): ByteArray {
+        val out = row ?: ByteArray(width)
+        val offset = y * width
+        System.arraycopy(luminances, offset, out, 0, width)
+        return out
+    }
+
+    override fun getMatrix(): ByteArray = luminances
 }

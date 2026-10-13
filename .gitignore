@@ -1,11 +1,12 @@
 # .NET 构建产物
 bin/
 obj/
-[Dd]ebug/
-[Rr]elease/
 *.user
 *.suo
 .vs/
+
+# 任何语言的构建输出目录(含 Android 的 app/build/)
+build/
 
 # 测试与覆盖率
 TestResults/
@@ -27,3 +28,13 @@ Thumbs.db
 
 # Agent 运行时状态(会话快照/hook 基线,机器本地数据,不应进版本库)
 .mimosa/
+
+# Gradle / Android 本地状态
+.gradle/
+.toolcache/
+local.properties
+captures/
+.cxx/
+
+# Gradle 迭代日志
+build-log-*.txt

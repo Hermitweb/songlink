@@ -5,12 +5,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import songlink.remote.data.PlaybackHistoryManager
 import songlink.remote.data.HistoryExcelExporter
@@ -121,7 +123,7 @@ fun SongHistoryItem(song: songlink.remote.data.PlayedSong) {
             Spacer(modifier = Modifier.height(4.dp))
             
             Text(
-                text = formatDateTime(song.playedAt),
+                text = formatTimestamp(song.playedAt),
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

@@ -1,13 +1,20 @@
 package songlink.remote.ui.stream
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import songlink.remote.data.transport.AudioTransportManager
 import javax.inject.Inject
 import dagger.hilt.android.lifecycle.HiltViewModel
+import java.net.Inet4Address
+import java.net.NetworkInterface
 
 /**
  * 音频串流 ViewModel（STATE MANAGEMENT）
@@ -81,27 +88,25 @@ class StreamViewModel @Inject constructor(
     
     /**
      * 获取本地 IP 地址（局域网可访问）
+     *
+     * 取第一个可用（非回环、非虚拟接口）的 IPv4 地址。
      */
     private suspend fun getLocalIpAddress(): String? {
-        return try {
-            val enet = java.net.NetworkInterface.getByName("wlan0") ?: 
-                      java.net.NetworkInterface.getByName("eth0") ?: 
-                      android.net.ConnectivityManager::class.java.methods
-                          .find { it.name == "getActiveNetworkInfo" }?.let { 
-                              val connectivityManager = android.content.Context.CONNECTIVITY_SERVICE as android.net.ConnectivityManager
-                              connectivityManager.activeNetworkInfo?.interfaceName.takeIf { it.startsWith("wlan") || it.startsWith("eth") }
-                          }
-            
-            // 简化版：返回第一个非回环地址
-            android.net.NetworkInfo::class.java.methods.firstOrNull { it.name == "getLocalIpAddress" }?.let {
-                // Android 10+ 使用 InetAddresses.toByteArray
-                null
-            }
-            
-            "localhost" // 测试用 fallback
-        } catch (e: Exception) {
-            e.printStackTrace()
-            "localhost"
+        return withContext(Dispatchers.IO) {
+            runCatching {
+                val candidates = NetworkInterface.getNetworkInterfaces()
+                    ?.asSequence()
+                    ?.filter { it.isUp && !it.isLoopback && !it.isVirtual }
+                    ?.flatMap { it.inetAddresses.asSequence() }
+                    ?.filterIsInstance<Inet4Address>()
+                    ?.filter { !it.isLoopbackAddress }
+                    ?.toList()
+                    .orEmpty()
+
+                // 优先局域网地址（PC Host 常在同一局域网），否则退回任意 IPv4
+                (candidates.firstOrNull { it.isSiteLocalAddress } ?: candidates.firstOrNull())
+                    ?.hostAddress
+            }.getOrNull()
         }
     }
 }
