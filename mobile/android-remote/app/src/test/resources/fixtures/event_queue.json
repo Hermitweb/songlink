@@ -1,0 +1,1 @@
+{"type":"event","name":"queue-updated","queue":[{"title":"A","artist":"X"},{"title":"B","artist":"Y"}],"v":1,"seq":10}
