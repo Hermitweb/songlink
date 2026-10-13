@@ -10,7 +10,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="InTheHand.Net.Personal" Version="4.0.5" />
+    <!-- 原写的 InTheHand.Net.Personal 是不存在的包 ID（NU1101）。
+         32feet/InTheHand 的 RFCOMM 实现在 InTheHand.Net.Bluetooth：
+         InTheHand.Net.Sockets.BluetoothListener / BluetoothClient（服务端）
+         + InTheHand.Net.Bluetooth.BluetoothAdapter（枚举本机适配器）。 -->
+    <PackageReference Include="InTheHand.Net.Bluetooth" Version="4.2.5" />
   </ItemGroup>
 
 </Project>

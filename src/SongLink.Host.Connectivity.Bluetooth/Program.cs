@@ -11,17 +11,17 @@ class Program
         Console.WriteLine();
         
         var server = new RfcommServer();
-        
-        if (server.listener == null)
+
+        if (!server.IsListening)
         {
             Console.WriteLine("[错误] 蓝牙适配器未就绪，请检查设备是否安装蓝牙硬件");
             Console.WriteLine("按任意键退出...");
             Console.ReadKey();
             return;
         }
-        
+
         Console.WriteLine("正在监听...");
-        Console.WriteLine("PIN 码：123456");
+        Console.WriteLine($"PIN 码：{server.Pin}");
         Console.WriteLine("在手机上搜索蓝牙设备并配对输入 PIN 码");
         Console.WriteLine();
         Console.WriteLine("按 Ctrl+C 停止服务");

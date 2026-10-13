@@ -4,16 +4,22 @@ using SongLink.Protocol;
 namespace SongLink.Host.Adapters.LocalSource;
 
 /// <summary>
-/// 本地音源适配器（架构 §3.6 / S2）：自注册 SMTC 的小播放器（NAudio），允许拖入 MP3/LRC→永远能放。
+/// 本地音源适配器（NAudio 版，架构 §3.6 / S2）：自注册 SMTC 的小播放器（NAudio），允许拖入 MP3/LRC→永远能放。
 /// 兜底方案：第三方 App 都不可用时，本地曲库依然可用；完全可控、无平台依赖。
+///
+/// 与 WmPlayerSourceAdapter（WMPlayer COM 版）并存，取舍见该类注释。
+/// 注：NAudio 的 AudioFileReader 自身即 ISampleProvider，无需再包一层自定义 provider；
+/// 构造时不预载曲目（曲库初始为空，强行打开 demo.mp3 会直接抛 FileNotFound），
+/// 由 Pick() 首次装载后再 Play()。
 /// </summary>
 public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
 {
     private readonly WaveOutEvent _waveOut;
-    private readonly WaveChannel32 _channel;
     private readonly LocalLibrary _library;
-    private readonly string _currentFile;
-    
+    private AudioFileReader? _reader;     // 当前解码源
+    private WaveChannel32? _channel;      // 送入声卡的采样流
+    private string _currentFile = "";
+
     private volatile bool _disposed;
     private static int _sessionCounter = 0;
     private readonly int _sessionId = Interlocked.Increment(ref _sessionCounter);
@@ -21,18 +27,9 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     public LocalSourceAdapter(LocalLibrary? library = null)
     {
         _library = library ?? new LocalLibrary();
-        
-        // NAudio 初始化
+
+        // NAudio 初始化（此时尚未装载曲目，故不 Init）
         _waveOut = new WaveOutEvent { DesiredLatency = 100 };
-        var provider = new Mp3FileProvider();
-        _channel = new WaveChannel32(provider);
-        _waveOut.Init(_channel);
-        
-        // 注册为 SMTC session（使系统识别我们为一个媒体应用）
-        RegisterSmtcSession();
-        
-        // 当前文件（可选）
-        _currentFile = string.Empty;
     }
 
     public string AppId => "localsource";
@@ -43,30 +40,37 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     {
         if (_disposed) return Task.FromResult<NowPlaying?>(null);
 
+        var channel = _channel;
+        var hasTrack = channel is not null && channel.TotalTime > TimeSpan.Zero;
+
         var np = new NowPlaying
         {
-            Title = _channel.Length > 0 ? Path.GetFileName(_currentFile) : "空闲",
+            Title = hasTrack ? Path.GetFileName(_currentFile) : "空闲",
             Artist = "本地音源",
-            Pos = (float)_channel.Position / 1000.0f,
-            Dur = _channel.Length > 0 ? (float)(_channel.Length / 1000.0f) : 0,
-            Status = _waveOut.PlaybackState == PlaybackState.Stopped 
-                ? "stopped" 
-                : (!_channel.IsDisposed && _channel.StreamPosition > 0 ? "playing" : "paused"),
+            // WaveStream.Position 是字节偏移，需按 WaveFormat 折算成秒
+            Pos = hasTrack ? (float)(channel!.Position / (double)channel!.WaveFormat.AverageBytesPerSecond) : 0,
+            Dur = hasTrack ? (float)channel!.TotalTime.TotalSeconds : 0,
+            Status = _waveOut.PlaybackState switch
+            {
+                PlaybackState.Playing => "playing",
+                PlaybackState.Paused => "paused",
+                _ => "stopped"
+            },
             SourceMode = "PC_LOCAL"
         };
 
         return Task.FromResult<NowPlaying?>(np);
     }
 
-    public async Task<bool> Play(CancellationToken ct = default)
+    public Task<bool> Play(CancellationToken ct = default)
     {
-        if (_disposed || _channel.Length <= 0) return false;
-        
+        if (_disposed || _channel is null) return Task.FromResult(false);
+
         // 添加到播放历史
         _library.AddPlayHistory(Path.GetFileName(_currentFile), "本地音源");
-        
+
         _waveOut.Play();
-        return true;
+        return Task.FromResult(true);
     }
 
     public Task<bool> Pause(CancellationToken ct = default)
@@ -107,14 +111,21 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
         try
         {
             _waveOut.Stop();
-            _channel.Dispose();
-            
-            var provider = new Mp3FileProvider(filePath);
-            _channel = new WaveChannel32(provider);
-            _waveOut.Init(_channel);
-            
+
+            var reader = new AudioFileReader(filePath);
+            var channel = new WaveChannel32(reader);
+            _waveOut.Init(channel);
+
+            // 只有 Init 成功才替换旧句柄，避免换歌失败时把正在播的也弄丢
+            var oldReader = _reader;
+            var oldChannel = _channel;
+            _reader = reader;
+            _channel = channel;
             _currentFile = filePath;
-            
+
+            oldChannel?.Dispose();
+            oldReader?.Dispose();
+
             _waveOut.Play();
             return true;
         }
@@ -150,7 +161,8 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
         var allTracks = await Task.Run(() => _library.Search("").ToList());
         if (allTracks.Count == 0) return false;
 
-        int currentIndex = allTracks.IndexOf(allTracks.FirstOrDefault(t => t.File == Path.GetFileName(_currentFile)));
+        var current = allTracks.FirstOrDefault(t => t.File == Path.GetFileName(_currentFile));
+        int currentIndex = current is null ? -1 : allTracks.IndexOf(current);
         int nextIndex = (currentIndex + direction + allTracks.Count) % allTracks.Count;
 
         return await Pick(allTracks[nextIndex].Title, allTracks[nextIndex].Artist);
@@ -163,32 +175,11 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
 
         try
         {
-            _waveOut?.Stop();
-            _waveOut?.Dispose();
+            _waveOut.Stop();
+            _waveOut.Dispose();
             _channel?.Dispose();
+            _reader?.Dispose();
         }
         catch { /* 忽略 */ }
-    }
-
-    private sealed class Mp3FileProvider : ISampleProvider
-    {
-        private readonly AudioFileReader _reader;
-        
-        public Mp3FileProvider()
-        {
-            _reader = new AudioFileReader(Path.Combine(new LocalLibrary().Directory, "demo.mp3"));
-        }
-        
-        public Mp3FileProvider(string filePath)
-        {
-            _reader = new AudioFileReader(filePath);
-        }
-        
-        public System.IO.Stream Stream => _reader.WaveFormat.ToString(); // Mock for interface
-        public NAudio.Wave.WaveFormat WaveFormat => _reader.WaveFormat;
-        public int Channels => _reader.WaveFormat.Channels;
-        public int SampleRate => _reader.WaveFormat.SampleRate;
-        
-        public int Read(float[] buffer, int offset, int count) => _reader.Read(buffer, offset, count);
     }
 }

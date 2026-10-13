@@ -65,11 +65,20 @@ public static class LyricServiceExtensions
         }
     }
 
+    /// <summary>
+    /// 去掉文件名非法字符。与 LyricService.Key / LocalLibrary.SafeName 同一套规则，
+    /// 保证缓存文件名和 TryGet 的查找路径一致（否则拉回来的歌词永远读不到）。
+    /// </summary>
+    private static string SafeName(string s) =>
+        new string(s.Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
+
     /// <summary>转换 LRCLib JSON → LRC 文本格式</summary>
     private static string ConvertLrclibToLrc(LrclibLyrics lrclib)
     {
         var lines = new List<string>();
-        
+
+        if (lrclib.syncedLyrics is null) return string.Empty;
+
         foreach (var line in lrclib.syncedLyrics.Split('\n'))
         {
             var parts = line.Split(' ');

@@ -1,7 +1,9 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <!-- 原为 net9.0，与仓库其它工程（net8.0 / net8.0-windows）不一致；
+         被测的 SongLink.Host.Core / Benchmarks 都是 net8.0-windows，net9.0 引用会额外拉一套运行时。 -->
+    <TargetFramework>net8.0-windows</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <IsPackable>false</IsPackable>
@@ -12,6 +14,14 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
     <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 原 csproj 一个 ProjectReference 都没有，测试里的 using SongLink.Protocol /
+         SongLink.Host / SongLink.Host.Benchmarks 全部 CS0234。 -->
+    <ProjectReference Include="..\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Core\Benchmarks\SongLink.Host.Core.Benchmarks.csproj" />
   </ItemGroup>
 
   <ItemGroup>

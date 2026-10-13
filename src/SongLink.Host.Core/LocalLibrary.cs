@@ -22,13 +22,17 @@ public sealed class LocalLibrary
     public LocalLibrary(string? dir = null)
     {
         _dir = dir ?? Path.Combine(AppContext.BaseDirectory, "library");
-        Directory.CreateDirectory(_dir);
+        // 全限定：本类的 Directory 属性会遮蔽 System.IO.Directory
+        System.IO.Directory.CreateDirectory(_dir);
         LoadIndex();
         LoadHistory();
     }
 
     private string IndexPath => Path.Combine(_dir, "index.json");
     private string HistoryPath => Path.Combine(_dir, "history.json");
+
+    /// <summary>曲库根目录（适配器按它拼音频文件绝对路径）。</summary>
+    public string Directory => _dir;
 
     private void LoadIndex()
     {

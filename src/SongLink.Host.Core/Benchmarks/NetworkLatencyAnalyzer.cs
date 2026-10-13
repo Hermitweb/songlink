@@ -23,7 +23,7 @@ public sealed class NetworkLatencyAnalyzer : IDisposable
         if (IsMonitoring) return;
         
         IsMonitoring = true;
-        _ = Task.Run(async () => MonitorLoopAsync(url, intervalMs));
+        _ = Task.Run(() => MonitorLoopAsync(url, intervalMs));
     }
     
     /// <summary>停止监控</summary>

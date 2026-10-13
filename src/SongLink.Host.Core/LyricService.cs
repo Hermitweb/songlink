@@ -22,6 +22,9 @@ public sealed class LyricService
     private static string Key(string title, string artist) =>
         new string($"{title} - {artist}".Where(c => !Path.GetInvalidFileNameChars().Contains(c)).ToArray()).Trim();
 
+    /// <summary>LRC 根目录。联网拉取（LyricServiceExtensions）把新歌词缓存回这个目录。</summary>
+    public string LibraryDirectory => _dir;
+
     private static string TrackKey(string title, string artist) => $"{title}|{artist}";
 
     /// <summary>设置歌词偏移（#11）。title 为空 → 设全局默认；否则设该曲偏移。</summary>

@@ -74,26 +74,32 @@ public class WebSocketIntegrationTests : IClassFixture<HostServerFixture>
     public async Task Reconnect_WithToken_RestoresState()
     {
         var port = _fixture.FreePort + 1;
-        
-        // 模拟完整的重连流程（简化版）
+
+        // 之前这个用例只分配了端口号却没启动任何服务器，必然连不上
+        await using var server = new FakeHostServer(port);
+        server.Start();
+        await Task.Delay(300);
+
+        // 模拟完整的重连流程：先配对拿 token，再用新连接携 token 重连
         using var client1 = new ClientWebSocket();
         using var client2 = new ClientWebSocket();
-        
+
         await client1.ConnectAsync(new Uri($"ws://localhost:{port}/"), CancellationToken.None);
         await client2.ConnectAsync(new Uri($"ws://localhost:{port}/"), CancellationToken.None);
-        
+
         // 第一个客户端发送 Hello 并获取 token
         var hello1 = new Hello { Role = "remote", Id = "h1", Token = null, Pin = "123456" };
         await SendFrame(client1, FrameCodec.Serialize(hello1));
-        
+
         var auth1 = await ReceiveUntilAsync(client1, f => f is AuthResult);
         var token = (auth1 as AuthResult)?.Token;
         Assert.NotNull(token);
-        
+        Assert.True((auth1 as AuthResult)!.Ok);
+
         // 第二个客户端使用 token 重连
         var hello2 = new Hello { Role = "remote", Id = "h2", Token = token };
         await SendFrame(client2, FrameCodec.Serialize(hello2));
-        
+
         var auth2 = await ReceiveUntilAsync(client2, f => f is AuthResult);
         Assert.NotNull(auth2);
         var auth2Obj = (AuthResult)auth2!;
@@ -106,20 +112,36 @@ public class WebSocketIntegrationTests : IClassFixture<HostServerFixture>
         await ws.SendAsync(bytes, WebSocketMessageType.Text, true, CancellationToken.None);
     }
     
-    private static async Task<Frame?> ReceiveUntilAsync(ClientWebSocket ws, Func<Frame, bool> predicate)
+    /// <summary>
+/// 收帧直到 predicate 命中或超时。
+/// 注意：WebSocket 消息可能被拆成多个帧，必须读到 EndOfMessage 再按整条消息解析；
+/// 且要先 Append 再判断 EndOfMessage（否则单条消息会丢掉内容）。
+/// </summary>
+private static async Task<Frame?> ReceiveUntilAsync(
+        ClientWebSocket ws, Func<Frame, bool> predicate, int timeoutMs = 5000)
     {
         var buffer = new byte[8192];
-        var sb = new StringBuilder();
-        
-        while (true)
+
+        using var cts = new CancellationTokenSource(timeoutMs);
+        try
         {
-            var r = await ws.ReceiveAsync(buffer, CancellationToken.None);
-            if (r.EndOfMessage) break;
-            sb.Append(Encoding.UTF8.GetString(buffer, 0, r.Count));
+            while (true)
+            {
+                var sb = new StringBuilder();
+                WebSocketReceiveResult r;
+                do
+                {
+                    r = await ws.ReceiveAsync(buffer, cts.Token);
+                    if (r.MessageType == WebSocketMessageType.Close) return null;
+                    sb.Append(Encoding.UTF8.GetString(buffer, 0, r.Count));
+                } while (!r.EndOfMessage);
+
+                var frame = FrameCodec.Parse(sb.ToString());
+                if (frame is not null && predicate(frame)) return frame;
+            }
         }
-        
-        var frame = FrameCodec.Parse(sb.ToString());
-        return frame != null && predicate(frame) ? frame : null;
+        catch (OperationCanceledException) { return null; }   // 超时
+        catch (WebSocketException) { return null; }
     }
 }
 

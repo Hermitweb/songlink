@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Xunit;
 using SongLink.Host.Benchmarks;
 
@@ -50,9 +51,10 @@ public class CpuMemoryMonitorTests : IDisposable
     public void Dispose_IsSafeToCallMultipleTimes()
     {
         _monitor.Dispose();
-        
+
         // Should not throw exception on second call
-        Assert.DoesNotThrow(() => _monitor.Dispose());
+        // (原写成 FluentAssertions 的 Assert.DoesNotThrow；本工程用 xUnit，用 Record.Exception 表达同一断言)
+        Assert.Null(Record.Exception(() => _monitor.Dispose()));
     }
     
     [Fact]
@@ -66,7 +68,8 @@ public class CpuMemoryMonitorTests : IDisposable
         var history = _monitor.GetCpuHistory();
         
         // After starting, we should have some data points
-        Assert.Greater(history.Count, 0);
+        // (原写成 FluentAssertions 的 Assert.Greater；本工程用 xUnit)
+        Assert.True(history.Count > 0, $"采样历史应有数据点，实际 {history.Count}");
         
         _monitor.StopMonitoring();
     }
@@ -75,10 +78,4 @@ public class CpuMemoryMonitorTests : IDisposable
     {
         _monitor?.Dispose();
     }
-}
-
-public sealed class MetricStats
-{
-    public double AvgLatencyMs { get; set; }
-    public long MaxMemoryMB { get; set; }
 }

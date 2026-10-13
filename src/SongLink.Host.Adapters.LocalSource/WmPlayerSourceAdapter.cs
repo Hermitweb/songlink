@@ -6,8 +6,15 @@ namespace SongLink.Host.Adapters.LocalSource;
 /// <summary>
 /// 本地音源适配器 v2 - WMPlayer COM 版本（无需 NAudio）
 /// 完全可控、纯托管、本机可编、永远兜底可用 + 自动注册 SMTC
+///
+/// 与 LocalSourceAdapter（NAudio 版）是两份**并存**的实现，能力差异：
+/// - 本类走系统 MediaPlayer.MediaPlayer COM，系统自带全部解码器（flac/ape/wma…），零额外依赖；
+///   但依赖 COM 注册，Windows Server Core / 精简镜像上 ProgID 可能缺失，此时降级为"只读元数据"。
+/// - NAudio 版只依赖托管库，不碰 COM，但解码能力取决于 NAudio 自带 codec。
+/// 两者 AppId 同为 "localsource"；AdapterFactory 默认反射取本程序集里第一个实现
+/// IPlayerAdapter 且有无参构造的类型，配置需用 adapterType 显式指定要用哪一个。
 /// </summary>
-public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
+public sealed class WmPlayerSourceAdapter : IPlayerAdapter, IDisposable
 {
     private object? _player;                           // WMP COM 对象
     private readonly LocalLibrary _library;            // 音乐库引用
@@ -16,7 +23,7 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     private static int _sessionCounter = 0;            // 会话计数器
     private readonly int _sessionId = Interlocked.Increment(ref _sessionCounter);
 
-    public LocalSourceAdapter(LocalLibrary? library = null)
+    public WmPlayerSourceAdapter(LocalLibrary? library = null)
     {
         _library = library ?? new LocalLibrary();
         
@@ -29,10 +36,10 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
                 _player = Activator.CreateInstance(playerType);
                 
                 // 配置隐藏模式（不显示窗口和 UI）
-                SetProperty(_player, "UIOn", false);
-                SetProperty(_player, "Visible", false);
-                SetProperty(_player, "DisplayChangeInfo", false);
-                SetProperty(_player, "DisplayMode", "none");
+                SetProperty(_player!, "UIOn", false);
+                SetProperty(_player!, "Visible", false);
+                SetProperty(_player!, "DisplayChangeInfo", false);
+                SetProperty(_player!, "DisplayMode", "none");
                 
                 Console.WriteLine("[localsource] WMPlayer COM 初始化成功（隐藏模式）");
             }
@@ -64,11 +71,12 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
     }
 
     /// <summary>获取 COM 对象的属性</summary>
-    private T GetProperty<T>(object obj, string prop, T defaultValue)
+    private T? GetProperty<T>(object obj, string prop, T defaultValue)
     {
-        try 
-        { 
-            return (T)obj.GetType().InvokeMember(prop, System.Reflection.BindingFlags.GetProperty | System.Reflection.BindingFlags.InvokeMethod, null, obj, Array.Empty<object>());
+        try
+        {
+            var raw = obj.GetType().InvokeMember(prop, System.Reflection.BindingFlags.GetProperty | System.Reflection.BindingFlags.InvokeMethod, null, obj, Array.Empty<object>());
+            return raw is null ? defaultValue : (T)raw;
         }
         catch { return defaultValue; }
     }
@@ -95,10 +103,10 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
         {
             var np = new NowPlaying
             {
-                Title = GetProperty<string>(_player, "currentMedia?.name", "空闲"),
+                Title = GetProperty<string>(_player, "currentMedia?.name", "空闲") ?? "空闲",
                 Artist = "本地音源",
-                Pos = (float)GetProperty<int>(_player, "position", 0) / 1000.0f,
-                Dur = (float)_getPropertyDouble("_player", "currentMedia.durationTime", 0),
+                Pos = (float)GetProperty<double>(_player, "position", 0) / 1000.0f,
+                Dur = (float)GetPropertyDouble(_player, "currentMedia.durationTime", 0),
                 Status = GetPlayState(GetProperty<int>(_player, "playState", 1)),
                 SourceMode = "PC_LOCAL"
             };
@@ -107,9 +115,10 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
         catch { return Task.FromResult<NowPlaying?>(null); }
     }
 
-    private double _getPropertyDouble(string target, string prop, double defaultVal)
+    private double GetPropertyDouble(object target, string prop, double defaultVal)
     {
-        try { return Convert.ToDouble(target.GetType().InvokeMember(prop, System.Reflection.BindingFlags.GetProperty | System.Reflection.BindingFlags.Instance, null, target, Array.Empty<object>())); }
+        var raw = GetProperty<object?>(target, prop, null);
+        try { return raw is null ? defaultVal : Convert.ToDouble(raw); }
         catch { return defaultVal; }
     }
 
@@ -195,7 +204,8 @@ public sealed class LocalSourceAdapter : IPlayerAdapter, IDisposable
         var allTracks = await Task.Run(() => _library.Search("").ToList(), default);
         if (allTracks.Count == 0) return false;
 
-        int currentIndex = allTracks.IndexOf(allTracks.FirstOrDefault(t => t.File == Path.GetFileName(_currentFile)));
+        var current = allTracks.FirstOrDefault(t => t.File == Path.GetFileName(_currentFile));
+        int currentIndex = current is null ? -1 : allTracks.IndexOf(current);
         int nextIndex = (currentIndex + direction + allTracks.Count) % allTracks.Count;
         
         return await Pick(allTracks[nextIndex].Title, allTracks[nextIndex].Artist, default);

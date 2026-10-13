@@ -50,19 +50,21 @@ public sealed class LocalFolderScanner : IDisposable
             {
                 // 提取元数据（简化版：仅从文件名）
                 var metadata = ExtractMetadataFromFile(filePath);
-                
-                // 导入到库
+
+                // 导入到库（FileStream 无 ReadToEndAsync(ct)，走 CopyToAsync，与 LocalLibrary.ImportBatchAsync 同法）
                 using var fs = new FileStream(filePath, FileMode.Open, FileAccess.Read);
-                var audioBytes = await fs.ReadToEndAsync(ct);
-                
+                using var buffer = new MemoryStream();
+                await fs.CopyToAsync(buffer, ct);
+                var audioBytes = buffer.ToArray();
+
                 var track = _library.Import(
                     title: metadata.Title,
                     artist: metadata.Artist,
                     audio: audioBytes.Length > 0 ? audioBytes : null,
                     ext: Path.GetExtension(filePath)
                 );
-                
-                result.SuccessfulImports.Add(track);
+
+                result.SuccessfulImportsList.Add(track);
                 
                 // 保存封面（如果找到）
                 if (metadata.HasCoverArt && !string.IsNullOrEmpty(metadata.CoverArtBase64))

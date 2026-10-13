@@ -16,9 +16,12 @@ public sealed class KrcDecoder : IDisposable
     };
     
     private bool _disposed;
+
+    /// <summary>是否已释放。</summary>
+    public bool IsDisposed => _disposed;
     
     /// <summary>解码 KRC 字符串为 LRC 格式</summary>
-    public string Decrypt(string krcContent)
+    public string Decrypt(string? krcContent)
     {
         if (string.IsNullOrWhiteSpace(krcContent))
             throw new ArgumentException("KRC content cannot be empty");

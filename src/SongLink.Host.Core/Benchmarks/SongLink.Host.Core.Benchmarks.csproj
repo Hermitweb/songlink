@@ -11,7 +11,11 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+    <!-- 本工程嵌套在 SongLink.Host.Core 目录内，故引用路径是 ../ 而不是 ../SongLink.Host.Core/。
+         原写法 ..\SongLink.Host.Core\SongLink.Host.Core.csproj 解析到
+         src\SongLink.Host.Core\SongLink.Host.Core\SongLink.Host.Core.csproj（不存在），
+         MSBuild 会报 MSB9008 静默跳过 —— 这条引用从来没有真正生效过。 -->
+    <ProjectReference Include="..\SongLink.Host.Core.csproj" />
   </ItemGroup>
 
 </Project>
