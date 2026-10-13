@@ -25,6 +25,7 @@ Thumbs.db
 
 # 临时
 *.tmp
+logs/
 
 # Agent 运行时状态(会话快照/hook 基线,机器本地数据,不应进版本库)
 .mimosa/

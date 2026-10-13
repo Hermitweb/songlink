@@ -337,20 +337,35 @@ components:
                     channels: a.Ch > 0 ? a.Ch : 2,
                     bitrateBps: a.FrameMs > 0 ? 128_000 : 64_000,
                     frameMs: a.FrameMs > 0 ? a.FrameMs : OpusCodec.DefaultFrameMs);
-                
-                _audioSink ??= new AudioStreamSink(opusCodec, _audioRenderer ?? new NullRenderer());
-                
-                // 启动 UDP 监听（如果指定了端口）
-                if (a.Port > 0 && a.Port != 51000)
+
+                // 把 audio:start 协商的端口作为 Host 监听端口（Android 端把这个值作为目标发送端口，
+                // 默认 51000，见 protocol §3.9）。fallback 到 51000 保证与 Android 默认对齐。
+                var hostPort = a.Port > 0 ? a.Port : 51000;
+                _audioSink ??= new AudioStreamSink(opusCodec, _audioRenderer ?? new NullRenderer(), hostPort);
+
+                // 真正把 UDP 监听器启起来 (arch §3.9 audio:start 真链路)
+                // — 之前 commit 31a05e3 在这里只 Console.WriteLine 了端口,实际 UdpClient 没绑,
+                //   Android 推的 PCM 包全部丢失。这是一个修复。
+                try
                 {
-                    Console.WriteLine($"[audio] Starting UDP listener on port {a.Port}");
+                    _audioSink.Start();
+                    var port = _audioSink.LocalPort;
+                    Console.WriteLine($"[audio] AudioStreamSink 启动,UDP listening on 0.0.0.0:{port}/ (audio:start.port={a.Port})");
                 }
-                
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"[audio] 启动 AudioStreamSink 失败:{ex.Message}");
+                    SendTo(conn, new Ack { Ref = a.Id ?? "", Ok = false });
+                    break;
+                }
+
                 SendTo(conn, new Ack { Ref = a.Id ?? "", Ok = true });
                 break;
 
             case AudioStop:
-                _audioSink?.Stop();
+                _audioSink?.Stop();    // 停渲染器,但保留 UDP 句柄以便重连 (audio:start 重新 Start)
+                _audioSink?.Dispose(); // 完整释放 — audio 业务一般一次生命周期
+                _audioSink = null;
                 SendTo(conn, new Ack { Ref = "", Ok = true });
                 break;
 
@@ -544,7 +559,8 @@ components:
             }
             catch { /* 超时/已断，忽略 */ }
         }
-        _listener.Stop();
+        try { _listener.Stop(); } catch (ObjectDisposedException) { /* 已 dispose */ }
+        try { _listener.Close(); } catch (ObjectDisposedException) { /* ignore */ }
         if (_acceptLoop is not null) { try { await _acceptLoop; } catch { } }
         _audioSink?.Dispose();
         await _bus.DisposeAsync();

@@ -66,6 +66,9 @@ public sealed class AudioStreamSink : IDisposable
 
             // 0 = 让 OS 分配；显式绑定 IPv4 以避开 Android 推送的 IPv6-only 路径
             _udp = new UdpClient(_port, AddressFamily.InterNetwork);
+            // 默认 OS 接收缓冲 ~8 KB 装不下 1 秒 48kHz/mono PCM(≈ 192 KB),Android 端 MediaProjection
+            // 高峰帧可能短暂突发超过此值。直接拉到 1 MB 给足余量,避免 ReceiveLoop 频繁空转。
+            try { _udp.Client.ReceiveBufferSize = 1 << 20; } catch { /* 忽略:某些 OS 不允许 */ }
             LocalPort = ((IPEndPoint)_udp.Client.LocalEndPoint!).Port;
 
             _cts = new CancellationTokenSource();
@@ -92,6 +95,11 @@ public sealed class AudioStreamSink : IDisposable
 
                 if (datagram.Length == 0) continue;
                 System.Threading.Interlocked.Increment(ref _framesReceived);
+                var fr = System.Threading.Interlocked.Read(ref _framesReceived);
+                if (fr % 50 == 0)
+                {
+                    System.Console.WriteLine($"[audio] FramesReceived={fr}, 最近payloadLen={datagram.Length - 16}");
+                }
 
                 try
                 {
