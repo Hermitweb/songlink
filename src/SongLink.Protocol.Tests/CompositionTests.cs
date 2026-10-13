@@ -34,6 +34,56 @@ public class CompositionTests
     public void HostConfig_missing_file_returns_defaults()
         => Assert.Equal(51999, HostConfig.LoadFile(Path.Combine(Path.GetTempPath(), "no-such-" + Guid.NewGuid().ToString("N") + ".json")).Port);
 
+    /// <summary>
+    /// 回归：旧实现用 Substring(1) 剥横杠，"--port" 会变成 "-port" 而匹配不到 switch，
+    /// 导致所有命令行覆盖静默失效（start-*.bat 传的参数全部无效）。
+    /// </summary>
+    [Theory]
+    [InlineData(new[] { "run", "--port=7000" }, 7000)]
+    [InlineData(new[] { "run", "--port", "7000" }, 7000)]
+    [InlineData(new[] { "run", "-port=7000" }, 7000)]
+    [InlineData(new[] { "run", "-port", "7000" }, 7000)]
+    [InlineData(new[] { "run", "--PORT", "7000" }, 7000)] // 大小写不敏感
+    public void HostConfig_ApplyArgs_accepts_both_dash_forms(string[] args, int expected)
+        => Assert.Equal(expected, new HostConfig { Port = 51999 }.ApplyArgs(args).Port);
+
+    [Fact]
+    public void HostConfig_ApplyArgs_equals_form_sets_all_keys()
+    {
+        var c = new HostConfig().ApplyArgs(new[]
+        {
+            "--adapter=uia", "--descriptor=d.json", "--ocr-assembly=o.dll",
+            "--ocr-type=T", "--pin=123456", "--require-sig=true"
+        });
+
+        Assert.Equal("uia", c.Adapter);
+        Assert.Equal("d.json", c.Descriptor);
+        Assert.Equal("o.dll", c.OcrAssembly);
+        Assert.Equal("T", c.OcrType);
+        Assert.Equal("123456", c.Pin);
+        Assert.True(c.RequireFrameSig);
+    }
+
+    [Fact]
+    public void HostConfig_ApplyArgs_space_form_sets_all_keys()
+    {
+        var c = new HostConfig().ApplyArgs(new[]
+        {
+            "run", "--adapter", "uia", "--descriptor", "d.json", "--pin", "654321"
+        });
+
+        Assert.Equal("uia", c.Adapter);
+        Assert.Equal("d.json", c.Descriptor);
+        Assert.Equal("654321", c.Pin);
+    }
+
+    [Fact]
+    public void HostConfig_ApplyArgs_bare_flag_without_value_is_ignored()
+    {
+        var c = new HostConfig { Adapter = "fake" }.ApplyArgs(new[] { "run", "--adapter" });
+        Assert.Equal("fake", c.Adapter);
+    }
+
     [Fact]
     public void AdapterFactory_builtin_fake()
     {

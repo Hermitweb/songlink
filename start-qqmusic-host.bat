@@ -20,7 +20,7 @@ echo [启动] 使用 QQMusic 适配器 + OCR 兜底...
 echo.
 
 dotnet run --project src/SongLink.Host.Core/SongLink.Host.Core.csproj ^
-    -- adapter=uia ^
+    --adapter=uia ^
     --descriptor=src\SongLink.Host.Adapters.UiaPick\descriptors\qqmusic.json ^
     --ocr-assembly=bin\x64\Release\net8.0-windows\SongLink.Host.Adapters.UiaPick.dll ^
     --ocr-type=SongLink.Host.Adapters.UiaPick.Ocr.StaticOcrEngine

@@ -44,9 +44,50 @@ public class PlayQueueTests
         queue.Add("C", "Z", "u");
         
         queue.Shuffle();
-        
+
         Assert.True(queue.IsShuffling);
         Assert.Equal(3, queue.Count);
+    }
+
+    /// <summary>
+    /// 回归：旧实现把 available(过滤后列表)的下标直接当作 _items 的下标赋给 CurrentIndex，
+    /// 越界后 _items[CurrentIndex] 会抛 ArgumentOutOfRangeException。
+    /// </summary>
+    [Fact]
+    public void GetNextSong_Shuffling_StaysInRangeAndNeverRepeatsCurrent()
+    {
+        using var queue = new PlayQueue();
+
+        queue.Add("A", "X", "u");
+        queue.Add("B", "Y", "u");
+        queue.Add("C", "Z", "u");
+
+        queue.SeekTo(1);
+        queue.Shuffle();
+
+        for (int i = 0; i < 500; i++)
+        {
+            var prev = queue.CurrentIndex;
+            var next = queue.GetNextSong();
+
+            Assert.NotNull(next);
+            Assert.InRange(queue.CurrentIndex, 0, queue.Count - 1);
+            Assert.NotEqual(prev, queue.CurrentIndex); // 随机模式不应重复当前这首
+        }
+    }
+
+    [Fact]
+    public void GetNextSong_Shuffling_SingleItem_ReturnsItself()
+    {
+        using var queue = new PlayQueue();
+
+        queue.Add("A", "X", "u");
+        queue.Shuffle();
+
+        var next = queue.GetNextSong();
+
+        Assert.NotNull(next);
+        Assert.Equal("A", next.Title);
     }
     
     [Fact]
@@ -62,7 +103,8 @@ public class PlayQueueTests
         var next = queue.GetNextSong();
         
         Assert.NotNull(next);
-        Assert.Equal("1", next.Title);
+        // FIFO：SeekTo(0) 后取下一首 → 索引推进到 1，返回第 2 首
+        Assert.Equal("2", next.Title);
         Assert.Equal(1, queue.CurrentIndex);
     }
     

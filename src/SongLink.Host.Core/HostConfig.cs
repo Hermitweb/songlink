@@ -40,32 +40,30 @@ public sealed class HostConfig
     {
         for (int i = 0; i < args.Length; i++)
         {
-            // 支持两段式 "--adapter" "uia" 和一端式 "--adapter=uia"
-            if (args[i].StartsWith("--", StringComparison.OrdinalIgnoreCase))
+            // 支持两段式 "--adapter" "uia" 和一端式 "--adapter=uia"（单横杠亦兼容）
+            if (args[i].StartsWith("-", StringComparison.Ordinal))
             {
                 var arg = args[i];
-                
+
                 // 一端的式 --adapter=uia
                 var equalsIdx = arg.IndexOf('=');
                 string key, value;
                 if (equalsIdx > 0)
                 {
-                    key = arg.Substring(1, equalsIdx - 1).ToLowerInvariant();
+                    // 注意：剥掉全部前导横杠，否则 "--port" 会变成 "-port" 而匹配不到 switch
+                    key = arg.Substring(0, equalsIdx).TrimStart('-').ToLowerInvariant();
                     value = arg.Substring(equalsIdx + 1);
                 }
                 else
                 {
                     // 两段式，需要检查下一个参数
-                    if (i + 1 >= args.Length || !args[i + 1].StartsWith("--"))
-                    {
-                        key = arg.Substring(1).ToLowerInvariant();
-                        value = args[i + 1];
-                        i++; // 跳过下一个参数
-                    }
-                    else
+                    if (i + 1 >= args.Length || args[i + 1].StartsWith("-", StringComparison.Ordinal))
                     {
                         continue; // 只有 key 没有 value，跳过
                     }
+                    key = arg.TrimStart('-').ToLowerInvariant();
+                    value = args[i + 1];
+                    i++; // 跳过下一个参数
                 }
                 
                 switch (key)

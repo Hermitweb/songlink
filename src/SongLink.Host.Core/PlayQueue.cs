@@ -176,14 +176,21 @@ public sealed class PlayQueue : IDisposable
             
             if (IsShuffling)
             {
-                // 随机取一首未播放过的
-                var available = _items.Where((_, i) => i != CurrentIndex).ToList();
-                if (available.Count == 0) return null;
-                
-                var nextIndex = _random.Next(available.Count);
-                CurrentIndex = available[nextIndex].Equals(_items[_random.Next(_items.Count)]) 
-                    ? _random.Next(_items.Count) 
-                    : nextIndex;
+                // 随机取一首不同于当前播放的歌
+                if (_items.Count == 1) return _items[0]; // 只有一首，无可选
+
+                if (CurrentIndex < 0 || CurrentIndex >= _items.Count)
+                {
+                    // 当前索引无效（尚未开始播放或已被移除），直接随机一首
+                    CurrentIndex = _random.Next(_items.Count);
+                }
+                else
+                {
+                    // 在 0.._items.Count-2 中取，再跳过 CurrentIndex 映射回真实下标
+                    var nextIndex = _random.Next(_items.Count - 1);
+                    if (nextIndex >= CurrentIndex) nextIndex++;
+                    CurrentIndex = nextIndex;
+                }
             }
             else
             {

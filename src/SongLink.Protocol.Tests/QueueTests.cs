@@ -59,7 +59,7 @@ public class QueueTests
         var ev = await ReadUntil(ws, f => f is EventFrame e && e.Name == "queue-updated", 2000) as EventFrame;
         Assert.NotNull(ev);
         Assert.NotNull(ev!.Queue);
-        Assert.Equal(1, ev.Queue!.Count);
+        Assert.Single(ev.Queue!);
     }
 
     private static async Task Send(WebSocket ws, Frame f)
