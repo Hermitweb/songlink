@@ -64,6 +64,49 @@ public sealed class MainForm : Form
         Load += async (_, _) => await InitializeAsync();
     }
 
+    /// <summary>初始化失败时,把异常写到状态栏 + 弹错误框,而不是让进程静默死掉(JIT 调试那种)。</summary>
+    private void ReportInitError(string stage, Exception ex)
+    {
+        var msg = $"[init/{stage}] {ex.GetType().Name}: {ex.Message}";
+        Console.Error.WriteLine(msg);
+        _pinLabel.Text = msg;
+        _adapterLabel.Text = $"请重启或检查依赖 — 堆栈见 ~/SongLink/crash.log 或 %LOCALAPPDATA%\\SongLink\\crash.log";
+        // 先写日志(可能 MessageBox 也会挂 — 比如初始化早期连 UI dispatcher 都不稳)
+        Program.WriteCrashLog(ex, $"MainForm.InitializeAsync/{stage}");
+        try { MessageBox.Show(msg + "\n\n完整堆栈见 ~/SongLink/crash.log", "SongLink 启动失败", MessageBoxButtons.OK, MessageBoxIcon.Error); }
+        catch { /* MessageBox 自身抛了就忽略 */ }
+    }
+
+    /// <summary>手动定位 WebView2 runtime 路径。Edge Update 注册表缺失/损坏时 CoreWebView2Environment.CreateAsync()
+    /// 会抛 WebView2RuntimeNotFoundException,所以直接扫已知的安装目录并把最新的版本喂给 CreateAsync 的
+    /// browserExecutableFolder 参数绕过 bootstrapper。</summary>
+    private static string? TryFindWebView2Runtime()
+    {
+        var candidates = new[]
+        {
+            @"C:\Program Files (x86)\Microsoft\EdgeWebView\Application",
+            @"C:\Program Files\Microsoft\EdgeWebView\Application",
+        };
+        foreach (var root in candidates)
+        {
+            if (!Directory.Exists(root)) continue;
+            // 找最新版本号(子目录名即版本号,按字典序排序时新版大于旧版)
+            var latest = Directory.GetDirectories(root)
+                .Select(d => new DirectoryInfo(d).Name)
+                .Where(n => System.Text.RegularExpressions.Regex.IsMatch(n, @"^\d+\.\d+\.\d+\.\d+$"))
+                .OrderByDescending(n => n, StringComparer.OrdinalIgnoreCase)
+                .FirstOrDefault();
+            if (latest is null) continue;
+            var full = Path.Combine(root, latest, "msedgewebview2.exe");
+            if (File.Exists(full))
+            {
+                // CoreWebView2Environment.CreateAsync 第三个参数要求**目录**(不是 .exe 路径)
+                return Path.Combine(root, latest);
+            }
+        }
+        return null;
+    }
+
     /// <summary>选可用端口(优先 51999,占用则向上扫描到 52010)。失败抛。</summary>
     private static int PickPort()
     {
@@ -84,41 +127,88 @@ public sealed class MainForm : Form
         throw new InvalidOperationException("未找到可用端口 (51999-52010 都被占用)");
     }
 
-    /// <summary>桌面 app 启动:实例化 HostServer(进程内跑)→ 初始化 WebView2 → 导航到点歌台。</summary>
+    /// <summary>桌面 app 启动:实例化 HostServer(进程内跑)→ 初始化 WebView2 → 导航到点歌台。
+    /// 任一阶段失败都走 ReportInitError,而不是抛 JIT 调试对话框。</summary>
     private async Task InitializeAsync()
     {
-        _port = PickPort();
-        _server = new HostServer(new FakeAdapter(), port: _port, pin: null, audioRenderer: new NullRenderer());
-        _server.Start(_port);
+        // 阶段 1: 起 HostServer(进程内)
+        try
+        {
+            _port = PickPort();
+            _server = new HostServer(new FakeAdapter(), port: _port, pin: null, audioRenderer: new NullRenderer());
+            _server.Start(_port);
+        }
+        catch (Exception ex)
+        {
+            ReportInitError("host", ex);
+            return;
+        }
 
-        // 服务端启动后, _server.Pin 是动态生成的 PIN（pin 缺省 = null 时自动生成）
-        // 这里 await 一下让构造完全跑完即可(PIN 是 readonly field,在 ctor 同步生成)
         var pin = _server.Pin;
         _pinLabel.Text = $"  PIN: {pin}    端口: {_port}    局域网 URL: http://+:{_port}/";
         _adapterLabel.Text = $"  适配器: FakeAdapter (本地演示)    SongLink 点歌台桌面 v1.0";
         Text = $"SongLink 点歌台 — PIN {pin}";
 
-        var userDataDir = Path.Combine(
-            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "SongLink.Host.Desktop", "WebView2");
-        Directory.CreateDirectory(userDataDir);
-
-        var env = await CoreWebView2Environment.CreateAsync(userDataDir);
-
-        await _webView.EnsureCoreWebView2Async(env);
-        _webView.Visible = true;
-        _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;   // 桌面端调试方便
-
-        // 监听 WebView2 → URL 含 localhost 失败（端口被占、Host 没起来等）时给出 toast
-        _webView.CoreWebView2.ProcessFailed += (_, e) =>
+        // 阶段 2: WebView2 user data dir
+        string userDataDir;
+        try
         {
-            MessageBox.Show(
-                $"WebView2 渲染进程失败:\n{e.Reason}\n{e.ProcessDescription}",
-                "SongLink",
-                MessageBoxButtons.OK, MessageBoxIcon.Warning);
-        };
+            userDataDir = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "SongLink.Host.Desktop", "WebView2");
+            Directory.CreateDirectory(userDataDir);
+        }
+        catch (Exception ex)
+        {
+            ReportInitError("user-data-dir", ex);
+            return;
+        }
 
-        var url = $"http://localhost:{_port}/?pin={pin}";
-        _webView.CoreWebView2.Navigate(url);
+        // 阶段 3: 初始化 WebView2 环境(最常见的失败源:Edge runtime 找不到。
+        // 这台机器 Edge Update 注册表缺失,WebView2 找不到 runtime → 显式指定 browserExecutableFolder 绕过)
+        CoreWebView2Environment? env = null;
+        try
+        {
+            string? browserFolder = TryFindWebView2Runtime();
+            if (browserFolder is not null)
+            {
+                Console.WriteLine($"[webview2] using explicit runtime: {browserFolder}");
+                var options = new CoreWebView2EnvironmentOptions();
+                env = await CoreWebView2Environment.CreateAsync(browserFolder, userDataDir, options);
+            }
+            else
+            {
+                // 没找到 → 走默认(可能下载,也可能再抛 RuntimeNotFoundException 给 ReportInitError)
+                env = await CoreWebView2Environment.CreateAsync(userDataDir);
+            }
+        }
+        catch (Exception ex)
+        {
+            ReportInitError("webview2-env", ex);
+            return;
+        }
+
+        // 阶段 4: 把 WebView2 真正 attach 上
+        try
+        {
+            await _webView.EnsureCoreWebView2Async(env);
+            _webView.Visible = true;
+            _webView.CoreWebView2.Settings.AreDevToolsEnabled = true;
+
+            _webView.CoreWebView2.ProcessFailed += (_, e) =>
+            {
+                MessageBox.Show(
+                    $"WebView2 渲染进程失败:\n{e.Reason}\n{e.ProcessDescription}",
+                    "SongLink",
+                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            };
+
+            var url = $"http://localhost:{_port}/?pin={pin}";
+            _webView.CoreWebView2.Navigate(url);
+        }
+        catch (Exception ex)
+        {
+            ReportInitError("webview2-init", ex);
+        }
     }
 }

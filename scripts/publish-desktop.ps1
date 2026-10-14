@@ -33,7 +33,7 @@ $pubArgs = @(
     '-o', $outPath
     '--self-contained', 'true'
     '-p:PublishSingleFile=true'
-    '-p:IncludeNativeLibrariesForSelfExtract=true'
+    '-p:IncludeAllContentForSelfExtract=true'
     '-p:EnableCompressionInSingleFile=true'
     '-p:DebugType=embedded'
     '-p:Version=1.0.0'
