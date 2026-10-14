@@ -3,159 +3,285 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>SongLink 点歌台</title>
+<title>点歌台</title>
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
+
+<!-- SVG 图标库 (Lucide 风格 stroke 1.75) -->
+<svg xmlns="http://www.w3.org/2000/svg" style="position:absolute;width:0;height:0;overflow:hidden" aria-hidden="true">
+  <defs>
+    <symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></symbol>
+    <symbol id="i-pause" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="4" width="4" height="16" rx="1"/><rect x="14" y="4" width="4" height="16" rx="1"/></symbol>
+    <symbol id="i-prev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="19 20 9 12 19 4 19 20" fill="currentColor" fill-opacity="0.15"/><line x1="5" y1="19" x2="5" y2="5"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 4 15 12 5 20 5 4" fill="currentColor" fill-opacity="0.15"/><line x1="19" y1="5" x2="19" y2="19"/></symbol>
+    <symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="5" y="5" width="14" height="14" rx="2"/></symbol>
+    <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></symbol>
+    <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+    <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></symbol>
+    <symbol id="i-vhigh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.15"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></symbol>
+    <symbol id="i-vlow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.15"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></symbol>
+    <symbol id="i-vmute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.15"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></symbol>
+    <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></symbol>
+    <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
+    <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></symbol>
+    <symbol id="i-shuffle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/></symbol>
+    <symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></symbol>
+    <symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+    <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="17"/><line x1="14" y1="20" x2="17" y2="20"/><line x1="17" y1="14" x2="20" y2="14"/><line x1="20" y1="17" x2="20" y2="20"/></symbol>
+    <symbol id="i-fire" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></symbol>
+    <symbol id="i-handle" viewBox="0 0 24 24" fill="currentColor" fill-opacity="0.4"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></symbol>
+    <symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76V5a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v5.76a2 2 0 0 0 .59 1.41L19 15H5l3.41-2.83A2 2 0 0 0 9 10.76z"/></symbol>
+    <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="4.93" y1="4.93" x2="6.34" y2="6.34"/><line x1="17.66" y1="17.66" x2="19.07" y2="19.07"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/><line x1="4.93" y1="19.07" x2="6.34" y2="17.66"/><line x1="17.66" y1="6.34" x2="19.07" y2="4.93"/></symbol>
+    <symbol id="i-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+    <symbol id="i-headset" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-6a9 9 0 0 1 18 0v6"/><path d="M21 19a2 2 0 0 1-2 2h-1v-7h3z"/><path d="M3 19a2 2 0 0 0 2 2h1v-7H3z"/></symbol>
+    <symbol id="i-help" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></symbol>
+  </defs>
+</svg>
+
+<!-- Toast 浮层 -->
 <div id="toast" class="toast" hidden></div>
 
-<header>
-  <h1>🎤 SongLink 点歌台</h1>
-  <div id="conn" class="badge disconnected">未连接</div>
-  <div id="user-wrap" hidden>
-    <label>昵称 <input id="user" maxlength="20" placeholder="匿名"></label>
+<!-- 顶部条 -->
+<header class="topbar">
+  <div class="brand">
+    <svg class="ico ico-md"><use href="#i-headset"/></svg>
+    <span class="brand-name">点歌台</span>
   </div>
-  <div id="pin-wrap" hidden>
-    <label>PIN <input id="pin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位"></label>
-    <button id="btn-connect">连接</button>
+  <div id="conn" class="conn-pill off">
+    <span class="dot"></span><span id="conn-text">未连接</span>
   </div>
-  <button id="btn-import" class="ghost" title="从电脑选一个音乐文件夹导入">📂 导入音乐</button>
-  <button id="btn-mode" class="ghost" title="切换长辈模式 / 完整模式">👴 长辈模式</button>
+  <div class="topbar-spacer"></div>
+  <button id="btn-theme" class="iconbtn" title="切换主题"><svg class="ico ico-md"><use href="#i-moon"/></svg></button>
+  <div id="user-wrap" class="user-wrap" hidden>
+    <svg class="ico ico-md"><use href="#i-user"/></svg>
+    <input id="user" maxlength="20" placeholder="昵称">
+  </div>
+  <div id="pin-wrap" class="pin-wrap" hidden>
+    <input id="pin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位 PIN">
+    <button id="btn-connect" class="btn primary">连接</button>
+  </div>
 </header>
 
-<main>
-  <section id="now">
-    <div class="art">
-      <img id="art" alt="" src="" onerror="this.style.display='none'">
-      <div class="art-placeholder" id="art-placeholder">♪</div>
-    </div>
-    <div class="meta">
-      <div id="title" class="title">—</div>
-      <div id="artist" class="artist">—</div>
-      <div id="album" class="album"></div>
-      <div class="status">
-        <span id="status" class="dot">·</span>
-        <span id="mode">—</span>
-        <span id="time">0:00 / 0:00</span>
+<!-- 主屏:左大当前播放+控制,右搜索/队列/历史/库 -->
+<main class="grid-main">
+
+  <!-- 左列:当前播放 + 控制 + 歌词 -->
+  <div class="col col-left">
+    <!-- 现在播放卡片 -->
+    <section class="card now-card">
+      <div class="now-art" id="art-wrap">
+        <svg class="ico ico-xl ico-mute"><use href="#i-headset"/></svg>
       </div>
-    </div>
-  </section>
-
-  <section class="controls">
-    <button id="btn-prev" title="上一首">⏮</button>
-    <button id="btn-play" title="播放/暂停" class="primary">▶</button>
-    <button id="btn-next" title="下一首">⏭</button>
-    <div class="volume" title="音量">
-      <button id="btn-mute" class="ghost" title="静音/恢复">🔊</button>
-      <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="音量">
-      <span id="vol-num" class="muted">100</span>
-    </div>
-  </section>
-
-  <section id="lyrics">
-    <div class="empty">歌词加载中…</div>
-  </section>
-
-  <section id="queue-section">
-    <div class="row">
-      <h2>📜 点歌队列 <span id="qcount" class="muted">(0)</span> <span class="muted">拖拽 ⇅ 排序</span></h2>
-      <div class="actions">
-        <button id="btn-shuffle" class="ghost" title="随机打乱">🎲 打乱</button>
-        <button id="btn-qclear" class="ghost danger" title="清空队列">🗑 清空</button>
+      <div class="now-meta">
+        <div class="now-title" id="title">—</div>
+        <div class="now-artist" id="artist">—</div>
+        <div class="now-album" id="album"></div>
+        <div class="now-status">
+          <span class="state-pill" id="status-pill">空闲</span>
+          <span class="time" id="time">0:00 / 0:00</span>
+        </div>
+        <!-- 进度条(可点) -->
+        <div class="progress-row">
+          <div class="progress-track" id="progress-track">
+            <div class="progress-fill" id="progress-fill"></div>
+          </div>
+        </div>
       </div>
-    </div>
-    <ol id="queue-list" class="queue"></ol>
-    <div id="queue-empty" class="empty">队列空 — 搜索或从热门区点歌</div>
-  </section>
+    </section>
 
-  <section id="trending-section">
-    <h2>🔥 热门 <span class="muted">(点击 = 加入队列)</span></h2>
-    <div id="trending" class="chips"></div>
-  </section>
-
-  <section id="search">
-    <div class="row">
-      <h2>🔍 搜索 <span class="muted">(结果点击 = 立即播放,带 ⏩ = 加入队列)</span></h2>
-    </div>
-    <div class="row">
-      <input id="kw" placeholder="歌名 / 歌手">
-      <button id="btn-search">搜</button>
-    </div>
-    <div id="results" class="results"></div>
-  </section>
-
-  <section id="history-section">
-    <div class="row">
-      <h2>🕒 历史回放 <span id="hcount" class="muted">(0)</span></h2>
-      <div class="actions">
-        <button id="btn-hreload" class="ghost" title="刷新历史">🔄 刷新</button>
+    <!-- 大控制条 -->
+    <section class="card ctrl-card">
+      <button id="btn-prev" class="iconbtn lg" title="上一首"><svg class="ico ico-lg"><use href="#i-prev"/></svg></button>
+      <button id="btn-play" class="iconbtn xl primary" title="播放/暂停"><svg class="ico ico-xl" id="play-icon"><use href="#i-play"/></svg></button>
+      <button id="btn-next" class="iconbtn lg" title="下一首"><svg class="ico ico-lg"><use href="#i-next"/></svg></button>
+      <div class="ctrl-divider"></div>
+      <div class="vol-group">
+        <button id="btn-mute" class="iconbtn" title="静音/恢复"><svg class="ico ico-md" id="vol-icon"><use href="#i-vhigh"/></svg></button>
+        <input id="vol" type="range" min="0" max="100" value="100" step="1" aria-label="音量">
+        <span id="vol-num" class="num">100</span>
       </div>
-    </div>
-    <ol id="history-list" class="history"></ol>
-    <div id="history-empty" class="empty">暂无历史 — 点过歌之后会出现在这里</div>
-  </section>
+    </section>
+
+    <!-- 歌词卡片 -->
+    <section class="card lyrics-card">
+      <div class="card-title">
+        <svg class="ico ico-md"><use href="#i-list"/></svg>
+        <span>歌词</span>
+      </div>
+      <div id="lyrics" class="lyrics-body">
+        <div class="empty">歌词加载中…</div>
+      </div>
+    </section>
+  </div>
+
+  <!-- 右列:点歌 / 队列 / 历史 / 库 -->
+  <div class="col col-right">
+    <!-- 点歌(搜索)卡片 -->
+    <section class="card search-card">
+      <div class="card-title">
+        <svg class="ico ico-md"><use href="#i-search"/></svg>
+        <span>点歌</span>
+      </div>
+      <div class="search-row">
+        <input id="kw" placeholder="输入歌名或歌手" autocomplete="off">
+        <button id="btn-search" class="btn primary">搜索</button>
+      </div>
+      <div id="results" class="results-body"></div>
+    </section>
+
+    <!-- 队列卡片(可拖拽排序) -->
+    <section class="card queue-card">
+      <div class="card-title">
+        <svg class="ico ico-md"><use href="#i-list"/></svg>
+        <span>队列</span>
+        <span class="badge" id="qcount">0</span>
+        <span class="card-spacer"></span>
+        <button id="btn-shuffle" class="iconbtn sm" title="随机打乱"><svg class="ico ico-sm"><use href="#i-shuffle"/></svg></button>
+        <button id="btn-qclear" class="iconbtn sm danger" title="清空"><svg class="ico ico-sm"><use href="#i-trash"/></svg></button>
+      </div>
+      <ol id="queue-list" class="queue-body"></ol>
+      <div id="queue-empty" class="empty">队列为空 — 在搜索结果点 + 加歌</div>
+    </section>
+
+    <!-- 历史回放 -->
+    <section class="card history-card">
+      <div class="card-title">
+        <svg class="ico ico-md"><use href="#i-clock"/></svg>
+        <span>最近听过</span>
+        <span class="card-spacer"></span>
+        <button id="btn-hreload" class="iconbtn sm" title="刷新"><svg class="ico ico-sm"><use href="#i-clock"/></svg></button>
+      </div>
+      <ol id="history-list" class="history-body"></ol>
+      <div id="history-empty" class="empty">暂无历史</div>
+    </section>
+
+    <!-- 库(热门 + 导入音乐) -->
+    <section class="card lib-card">
+      <div class="card-title">
+        <svg class="ico ico-md"><use href="#i-fire"/></svg>
+        <span>热门</span>
+      </div>
+      <div id="trending" class="chips"></div>
+      <div class="lib-actions">
+        <button id="btn-import" class="btn ghost"><svg class="ico ico-sm"><use href="#i-folder"/></svg><span>导入本地音乐</span></button>
+        <button id="btn-mode" class="btn ghost" title="切换长辈模式"><svg class="ico ico-sm"><use href="#i-user"/></svg><span>长辈模式</span></button>
+        <button id="btn-qr" class="btn ghost" title="手机扫码连接"><svg class="ico ico-sm"><use href="#i-qr"/></svg><span>手机连</span></button>
+      </div>
+    </section>
+  </div>
 </main>
 
-<script src="/static/app.js"></script>
-
 <!-- 导入音乐 modal -->
-<div id="import-modal" class="modal hidden" role="dialog" aria-label="导入音乐文件夹">
-  <div class="modal-box">
-    <h3>📂 导入本地音乐</h3>
-    <p class="hint">选一个音乐文件夹,系统会自动扫描里面的 MP3 / FLAC / WAV / M4A 文件并加入点歌库。</p>
-    <div class="row">
-      <input id="import-path" type="text" placeholder="例如 D:\Music 或 /mnt/music">
-      <button id="btn-import-pick">📁 选择文件夹</button>
+<div id="import-modal" class="modal hidden" role="dialog" aria-label="导入音乐">
+  <div class="modal-card">
+    <div class="modal-title">
+      <svg class="ico ico-md"><use href="#i-folder"/></svg>
+      <span>导入本地音乐</span>
+      <button class="iconbtn sm modal-close" id="btn-import-cancel"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
     </div>
+    <p class="muted">扫描文件夹里的 MP3 / FLAC / WAV / M4A 文件加入点歌库。</p>
     <div class="row">
-      <button id="btn-import-go" class="primary">开始导入</button>
-      <button id="btn-import-cancel" class="ghost">取消</button>
+      <input id="import-path" type="text" placeholder="例如 D:\Music">
+      <button id="btn-import-pick" class="btn ghost"><svg class="ico ico-sm"><use href="#i-folder"/></svg><span>选择文件夹</span></button>
     </div>
-    <div id="import-result" class="result" hidden></div>
+    <div class="row right">
+      <button id="btn-import-go" class="btn primary"><svg class="ico ico-sm"><use href="#i-check"/></svg><span>开始导入</span></button>
+    </div>
+    <div id="import-result" class="result-block" hidden></div>
   </div>
 </div>
 
-<!-- 首次启动引导 wizard -->
-<div id="wizard" class="wizard hidden" role="dialog" aria-label="首次启动引导">
-  <div class="progress" id="wiz-progress">第 1 步 / 共 4 步</div>
-  <div class="step" id="wiz-step-1">
-    <h1>🎤 欢迎使用点歌台</h1>
-    <p>这是一个给家里长辈用的音乐点歌台。<br>操作很简单 — 搜索歌名、点一下就播。</p>
-    <p style="color:#a0c0e0">接下来几步快速设置一下,然后就能用了。</p>
-    <div class="nav"><button id="wiz-1-next" class="primary">开始设置 →</button></div>
-  </div>
-  <div class="step hidden" id="wiz-step-2">
-    <h2>选你的音乐来源</h2>
-    <p>系统能接管你电脑上正在播放的音乐,也能导入本地音乐文件。</p>
-    <div class="opts">
-      <button data-source="auto">🔄 自动接管电脑正在播放的(推荐)<small>QQ 音乐 / 网易云 / 酷狗 / 汽水音乐 都能识别</small></button>
-      <button data-source="local">📁 导入本地音乐文件夹<small>把 MP3 文件放到一个文件夹,然后告诉我们在哪</small></button>
+<!-- 首次启动引导 -->
+<div id="wizard" class="modal hidden" role="dialog" aria-label="首次启动">
+  <div class="wizard-card">
+    <div class="modal-title">
+      <svg class="ico ico-md"><use href="#i-headset"/></svg>
+      <span>欢迎使用点歌台</span>
     </div>
-    <div class="nav"><button id="wiz-2-back" class="ghost">← 上一步</button></div>
-  </div>
-  <div class="step hidden" id="wiz-step-3">
-    <h2>音量调到舒服的位置</h2>
-    <p>用下面的滑条把音量调到舒服的位置,以后可以随时调。</p>
-    <div class="vol-preview">
-      🔊 <input id="wiz-vol" type="range" min="0" max="100" value="60" step="1">
-      <span id="wiz-vol-num" class="muted">60</span>
+    <div class="wizard-progress" id="wiz-progress">第 1 步 / 共 4 步</div>
+    <div class="wizard-step" data-step="1">
+      <p class="lead">这是一个给家里长辈用的点歌台,操作很简单:</p>
+      <ul class="bullets">
+        <li>在搜索框输入歌名,点一下就播</li>
+        <li>大按钮控制上一首 / 暂停 / 下一首</li>
+        <li>手机扫码也能当遥控器</li>
+      </ul>
+      <div class="row right">
+        <button id="wiz-1-next" class="btn primary">开始设置 <svg class="ico ico-sm"><use href="#i-chevron-right"/></svg></button>
+      </div>
     </div>
-    <div class="nav">
-      <button id="wiz-3-back" class="ghost">← 上一步</button>
-      <button id="wiz-3-next" class="primary">下一步 →</button>
+    <div class="wizard-step hidden" data-step="2">
+      <p class="lead">先选你的音乐来源:</p>
+      <div class="opts">
+        <button class="opt-card" data-source="auto">
+          <svg class="ico ico-lg"><use href="#i-check"/></svg>
+          <div>
+            <strong>自动接管电脑正在播放的</strong>
+            <small>QQ 音乐 / 网易云 / 酷狗 / 汽水音乐 都能识别</small>
+          </div>
+        </button>
+        <button class="opt-card" data-source="local">
+          <svg class="ico ico-lg"><use href="#i-folder"/></svg>
+          <div>
+            <strong>导入本地音乐文件夹</strong>
+            <small>把 MP3 文件放到一个文件夹,然后告诉我们在哪</small>
+          </div>
+        </button>
+      </div>
+      <div class="row right">
+        <button id="wiz-2-back" class="btn ghost">返回</button>
+      </div>
     </div>
-  </div>
-  <div class="step hidden" id="wiz-step-4">
-    <h1>✅ 准备好了!</h1>
-    <p>现在可以:<br>
-      • 在搜索框输入歌名,点一下就播<br>
-      • 点 ⏮ ⏸ ⏭ 控制上一首/暂停/下一首<br>
-      • 拖滑条调音量<br>
-    </p>
-    <p style="color:#a0c0e0">手机扫码也能当遥控器 — 顶部右上角的「手机连」按钮。</p>
-    <div class="nav"><button id="wiz-4-finish" class="primary">开始用 →</button></div>
+    <div class="wizard-step hidden" data-step="3">
+      <p class="lead">把音量调到舒服的位置:</p>
+      <div class="vol-preview">
+        <svg class="ico ico-lg"><use href="#i-vhigh"/></svg>
+        <input id="wiz-vol" type="range" min="0" max="100" value="60" step="1">
+        <span id="wiz-vol-num" class="num big">60</span>
+      </div>
+      <div class="row right">
+        <button id="wiz-3-back" class="btn ghost">返回</button>
+        <button id="wiz-3-next" class="btn primary">下一步</button>
+      </div>
+    </div>
+    <div class="wizard-step hidden" data-step="4">
+      <p class="lead">准备好了!</p>
+      <ul class="bullets">
+        <li>搜索框输入歌名 → 点歌</li>
+        <li>大按钮控制 上一首 / 暂停 / 下一首</li>
+        <li>需要更多设置,点右上角 <svg class="ico ico-sm ico-inline"><use href="#i-settings"/></svg> 按钮</li>
+      </ul>
+      <div class="row right">
+        <button id="wiz-4-finish" class="btn primary">开始用 <svg class="ico ico-sm"><use href="#i-chevron-right"/></svg></button>
+      </div>
+    </div>
   </div>
 </div>
 
+<!-- QR modal -->
+<div id="qr-modal" class="modal hidden" role="dialog" aria-label="手机扫码">
+  <div class="modal-card qr-card">
+    <div class="modal-title">
+      <svg class="ico ico-md"><use href="#i-qr"/></svg>
+      <span>手机扫码连接</span>
+      <button class="iconbtn sm modal-close" id="btn-qr-close"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
+    </div>
+    <p class="muted">用手机浏览器扫码即可连上这台点歌台,不用记 PIN。</p>
+    <div class="qr-stage">
+      <div id="qr-img" class="qr-img"></div>
+      <div class="qr-info">
+        <div><strong>URL</strong> <span id="qr-url">ws://...</span></div>
+        <div><strong>PIN</strong> <span id="qr-pin">-</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
 </body>
 </html>
