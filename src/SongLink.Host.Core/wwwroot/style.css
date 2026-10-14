@@ -148,4 +148,99 @@ main {
   z-index: 999; font-size: 14px; max-width: 80%;
 }
 .toast.error { background: #5a3030; color: #ffd4d4; }
-.toast.ok { background: #1e6e3a; color: #d4f5dc; }
+.toast.ok { background: #1e6e3a; color: #d4f4dc; }
+
+/* ===== 长辈模式(Elder Mode)=====
+   默认开启:大字号、大按钮、隐藏工程师向功能(队列/历史/导入/调试),
+   单屏只显示当前播放 + 大控制条 + 大歌词 + 搜索框。
+   通过 body.elder-mode 切换。 */
+body.elder-mode { font-size: 18px; line-height: 1.6; }
+body.elder-mode h1 { font-size: 22px; }
+body.elder-mode h2 { font-size: 20px; }
+body.elder-mode #now { padding: 24px; gap: 24px; }
+body.elder-mode #now .art { width: 200px; height: 200px; border-radius: 8px; }
+body.elder-mode #now .art-placeholder { font-size: 96px; }
+body.elder-mode #now .title { font-size: 36px; }
+body.elder-mode #now .artist { font-size: 22px; }
+body.elder-mode #now .album { font-size: 18px; }
+body.elder-mode #now .status { font-size: 18px; gap: 16px; }
+body.elder-mode #now .dot { width: 14px; height: 14px; }
+body.elder-mode .controls { gap: 16px; padding: 16px 0; }
+body.elder-mode .controls button.primary { width: 96px; height: 96px; font-size: 36px; }
+body.elder-mode .controls button { width: 72px; height: 72px; font-size: 28px; }
+body.elder-mode .controls .volume { margin-left: 24px; gap: 12px; }
+body.elder-mode .controls .volume button { width: 56px; height: 56px; font-size: 24px; }
+body.elder-mode .controls input[type=range] { width: 240px; height: 10px; }
+body.elder-mode .controls input[type=range]::-webkit-slider-thumb { width: 28px; height: 28px; }
+body.elder-mode .controls input[type=range]::-moz-range-thumb { width: 28px; height: 28px; }
+body.elder-mode .controls #vol-num { font-size: 18px; min-width: 48px; }
+body.elder-mode #lyrics { padding: 24px; font-size: 22px; line-height: 2.2; min-height: 240px; max-height: 480px; }
+body.elder-mode #lyrics .line { padding: 6px 14px; }
+body.elder-mode #lyrics .line.active { font-size: 28px; font-weight: 700; }
+body.elder-mode #search { padding: 20px; }
+body.elder-mode #search .row input { font-size: 18px; padding: 12px; min-width: 280px; }
+body.elder-mode #search .row button { font-size: 18px; padding: 12px 24px; }
+body.elder-mode #search .results .hit { padding: 14px 16px; font-size: 18px; }
+body.elder-mode #search .results .hit .t { font-size: 22px; }
+body.elder-mode #search .results .hit .add { font-size: 16px; padding: 8px 16px; }
+body.elder-mode #now .time { font-size: 20px; }
+
+/* 长辈模式下隐藏工程师向 section + 调试按钮 */
+body.elder-mode #queue-section,
+body.elder-mode #trending-section,
+body.elder-mode #history-section,
+body.elder-mode #btn-import,
+body.elder-mode #btn-mode { display: none !important; }
+
+/* 长辈模式开关按钮(头部右侧) */
+#btn-mode { font-size: 14px; }
+body.elder-mode #btn-mode { background: #4a90e2; color: white; }
+
+/* ===== 导入音乐 modal ===== */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+  display: flex; align-items: center; justify-content: center; z-index: 1000;
+}
+.modal.hidden { display: none; }
+.modal-box {
+  background: #1a1d24; color: #e6e6e6; padding: 24px; border-radius: 10px;
+  min-width: 360px; max-width: 600px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+}
+.modal-box h3 { margin-top: 0; font-size: 18px; }
+.modal-box .hint { color: #a0a0a0; font-size: 13px; margin: 8px 0; }
+.modal-box .row { display: flex; gap: 8px; margin: 12px 0; }
+.modal-box input[type=text] {
+  flex: 1; padding: 8px 12px; border-radius: 4px; border: 1px solid #444;
+  background: #0f1115; color: #e6e6e6; font-size: 14px;
+}
+.modal-box button { padding: 8px 16px; }
+.modal-box .result { background: #2a2e38; padding: 10px; border-radius: 4px; margin-top: 10px; font-size: 13px; }
+.modal-box .err { color: #ff9b9b; }
+.modal-box .ok-msg { color: #b1f0c1; }
+
+/* ===== Onboarding wizard ===== */
+.wizard {
+  position: fixed; inset: 0; background: rgba(15, 17, 21, 0.96);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  z-index: 1100; padding: 32px; text-align: center;
+}
+.wizard.hidden { display: none; }
+.wizard h1 { font-size: 36px; margin: 0 0 16px; }
+.wizard p { font-size: 18px; color: #c0c0c0; max-width: 540px; line-height: 1.6; }
+.wizard .step { background: #1a1d24; padding: 36px; border-radius: 12px; max-width: 640px; }
+.wizard .step h2 { font-size: 26px; margin: 0 0 16px; }
+.wizard .opts { display: flex; flex-direction: column; gap: 12px; margin: 24px 0; }
+.wizard .opts button {
+  padding: 20px 24px; font-size: 20px; background: #2a3a5a; text-align: left;
+  border-radius: 8px; line-height: 1.4;
+}
+.wizard .opts button:hover { background: #3a4a6a; }
+.wizard .opts small { color: #a0c0e0; font-size: 14px; display: block; margin-top: 4px; }
+.wizard .nav { display: flex; gap: 12px; margin-top: 24px; }
+.wizard .nav button { padding: 12px 24px; font-size: 16px; }
+.wizard .nav button.primary { font-size: 18px; padding: 14px 28px; }
+.wizard .progress { color: #707070; font-size: 14px; margin-bottom: 16px; }
+.wizard .vol-preview { font-size: 48px; margin: 20px 0; }
+.wizard .vol-preview input[type=range] { width: 320px; height: 12px; }
+.wizard .vol-preview input[type=range]::-webkit-slider-thumb { width: 32px; height: 32px; }
+.wizard .vol-preview input[type=range]::-moz-range-thumb { width: 32px; height: 32px; }

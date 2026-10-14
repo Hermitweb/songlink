@@ -191,7 +191,7 @@ components:
       type: object
       properties:
         type: { type: string, enum: [cmd] }
-        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, queue.move, setSourceMode, calibrate, getLyric, trending, history.list, volume] }
+        action: { type: string, enum: [play, pause, stop, next, prev, pick, search, queue.add, queue.top, queue.remove, queue.clear, queue.shuffle, queue.unshuffle, queue.move, setSourceMode, calibrate, getLyric, trending, history.list, volume, import.folder] }
         args: { type: object }";
                 
                 var bytes = Encoding.UTF8.GetBytes(yamlContent);
@@ -456,6 +456,56 @@ components:
                 }
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
                 SendTo(conn, new EventFrame { Name = "history-list", Queue = arr });
+                break;
+
+            case Cmd c when c.Action == "import.folder":
+                // Web 面板「导入音乐」用 — 递归扫文件夹,把音频文件批量入库。
+                // args.path: 绝对路径(如 D:\Music) ;返回 ack + import-result event 携 ok/failed/total。
+                {
+                    var path = SafeStr(c.Args?["path"]) ?? "";
+                    if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                    {
+                        SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = false });
+                        SendTo(conn, new ErrorFrame { Ref = c.Id, Code = "PATH_INVALID", Hint = "文件夹不存在" });
+                        break;
+                    }
+                    var exts = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { ".mp3", ".flac", ".wav", ".m4a", ".aac", ".ogg", ".opus", ".wma" };
+                    var files = new List<string>();
+                    try
+                    {
+                        foreach (var f in Directory.EnumerateFiles(path, "*.*", SearchOption.AllDirectories))
+                            if (exts.Contains(Path.GetExtension(f))) files.Add(f);
+                    }
+                    catch (Exception ex)
+                    {
+                        SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = false });
+                        SendTo(conn, new ErrorFrame { Ref = c.Id, Code = "SCAN_FAILED", Hint = ex.Message });
+                        break;
+                    }
+                    if (files.Count == 0)
+                    {
+                        SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                        SendTo(conn, new EventFrame { Name = "import-result",
+                            Queue = new System.Text.Json.Nodes.JsonArray {
+                                new System.Text.Json.Nodes.JsonObject { ["total"] = 0, ["imported"] = 0, ["failed"] = 0 }
+                            } });
+                        break;
+                    }
+                    SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = true });
+                    // 真导入放后台 — 大量文件不阻塞 ws dispatch
+                    _ = Task.Run(async () =>
+                    {
+                        var r = await _library.ImportBatchAsync(files, _cts.Token);
+                        Broadcast(new EventFrame { Name = "import-result",
+                            Queue = new System.Text.Json.Nodes.JsonArray {
+                                new System.Text.Json.Nodes.JsonObject {
+                                    ["total"] = r.TotalFiles,
+                                    ["imported"] = r.SuccessfulImportsList.Count,
+                                    ["failed"] = r.FailedFiles
+                                }
+                            } });
+                    });
+                }
                 break;
 
             case Cmd c:

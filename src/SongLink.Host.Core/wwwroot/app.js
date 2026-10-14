@@ -19,6 +19,12 @@
   let reconnectDelay = 0;     // 退避秒(0/3/5/8,最大 15)
   let volumeMuted = false;
   let preMuteVolume = 1.0;
+  // 长辈模式 / 首次引导 / 导入
+  const ELDER_KEY = 'songlink.elderMode';
+  const ONBOARD_KEY = 'songlink.onboarded';
+  let elderMode = localStorage.getItem(ELDER_KEY);
+  if (elderMode === null) { elderMode = 'on'; localStorage.setItem(ELDER_KEY, 'on'); }
+  else elderMode = elderMode === 'on' ? 'on' : 'off';
 
   const $ = id => document.getElementById(id);
   const fmtTime = s => { const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, '0')}`; };
@@ -244,6 +250,10 @@
           history = (f.queue || []).slice();   // 历史也用 Queue 字段携带 (JSON 数组)
           renderHistory();
         }
+        if (f.name === 'import-result') {
+          const r = (f.queue && f.queue[0]) || {};
+          showImportResult(r);
+        }
         renderNow();
         break;
       case 'error':
@@ -377,7 +387,133 @@
     setTimeout(() => { chip.style.background = ''; }, 300);
   });
 
+  // ============== 长辈模式 ==============
+  function applyElderMode() {
+    document.body.classList.toggle('elder-mode', elderMode === 'on');
+    $('btn-mode').textContent = elderMode === 'on' ? '⚙️ 完整模式' : '👴 长辈模式';
+    // 长辈模式下标题简化
+    const h1 = document.querySelector('header h1');
+    if (h1) h1.textContent = elderMode === 'on' ? '🎵 点歌台' : '🎤 SongLink 点歌台';
+  }
+  function toggleElderMode() {
+    elderMode = elderMode === 'on' ? 'off' : 'on';
+    localStorage.setItem(ELDER_KEY, elderMode);
+    applyElderMode();
+    toast(elderMode === 'on' ? '已切换长辈模式 — 大字大按钮' : '已切换完整模式', 'ok');
+  }
+
+  // ============== 导入音乐 ==============
+  function openImportModal() { $('import-modal').classList.remove('hidden'); $('import-path').focus(); }
+  function closeImportModal() { $('import-modal').classList.add('hidden'); $('import-result').hidden = true; }
+
+  async function pickFolder() {
+    // Chromium / WebView2 支持 showDirectoryPicker;浏览器原生不支持时回退到手工输入
+    if (window.showDirectoryPicker) {
+      try {
+        const dir = await window.showDirectoryPicker();
+        // 在浏览器里我们拿不到本地绝对路径,只能给个文件夹名 → 让用户填完整路径
+        $('import-path').value = dir.name;
+        toast('文件夹名已填入 — 请补全完整路径(如 D:\\' + dir.name + ')', 'ok');
+      } catch (e) {
+        // 用户取消或权限拒绝
+      }
+    } else {
+      toast('请直接在输入框里粘贴文件夹路径', 'ok');
+      $('import-path').focus();
+    }
+  }
+
+  function doImport() {
+    const path = $('import-path').value.trim();
+    if (!path) { toast('请输入文件夹路径', 'error'); return; }
+    $('import-result').hidden = false;
+    $('import-result').innerHTML = '<span class="hint">正在扫描文件夹…</span>';
+    send({ type: 'cmd', id: uuid(), action: 'import.folder', args: { path } });
+  }
+
+  function showImportResult(r) {
+    const el = $('import-result');
+    if (r.failed > 0) {
+      el.innerHTML = `<span class="ok-msg">✅ 导入完成</span><br>扫到 ${r.total} 个文件,成功导入 ${r.imported} 首,失败 ${r.failed} 个`;
+    } else {
+      el.innerHTML = `<span class="ok-msg">✅ 导入完成</span><br>扫到 ${r.total} 个文件,成功导入 ${r.imported} 首`;
+    }
+    toast('导入完成 — ' + r.imported + ' 首新歌', 'ok');
+  }
+
+  // ============== 首次启动 wizard ==============
+  function setupWizard() {
+    // 已走过就不再走
+    if (localStorage.getItem(ONBOARD_KEY) === 'yes') return;
+    // 等连上 WS 再展示(没连接就走不出第 3 步调音量)
+    const waitConn = setInterval(() => {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        clearInterval(waitConn);
+        showWizard();
+      }
+    }, 300);
+    // 30s 还没连上(没 PIN)就不强求了
+    setTimeout(() => clearInterval(waitConn), 30000);
+
+    // 步骤切换
+    function showStep(n) {
+      [1, 2, 3, 4].forEach(i => { const el = $('wiz-step-' + i); if (el) el.classList.toggle('hidden', i !== n); });
+      $('wiz-progress').textContent = `第 ${n} 步 / 共 4 步`;
+    }
+    function showWizard() { $('wizard').classList.remove('hidden'); showStep(1); }
+
+    $('wiz-1-next').onclick = () => showStep(2);
+    $('wiz-2-back').onclick = () => showStep(1);
+    $('wiz-3-back').onclick = () => showStep(2);
+    $('wiz-4-finish').onclick = () => { $('wizard').classList.add('hidden'); localStorage.setItem(ONBOARD_KEY, 'yes'); };
+
+    // 步骤 2:选音源
+    document.querySelectorAll('#wiz-step-2 .opts button').forEach(btn => {
+      btn.onclick = () => {
+        const src = btn.dataset.source;
+        if (src === 'auto') {
+          // 不需要服务端做任何事 — SMTC 已经接管了正在播放的 App
+          toast('已设置:自动接管电脑正在播放的', 'ok');
+          showStep(3);
+        } else if (src === 'local') {
+          // 跳到步骤 3,然后结束时弹导入 modal
+          toast('已选本地音乐 — 设置完成后会提示导入', 'ok');
+          window._wizWantsImport = true;
+          showStep(3);
+        }
+      };
+    });
+
+    // 步骤 3:音量
+    const wizVol = $('wiz-vol');
+    const wizVolNum = $('wiz-vol-num');
+    function sendWizVol() {
+      const pct = parseInt(wizVol.value, 10);
+      wizVolNum.textContent = pct;
+      send({ type: 'cmd', id: uuid(), action: 'volume', args: { level: pct / 100 } });
+      // 同步到主面板
+      $('vol').value = pct;
+      $('vol-num').textContent = pct;
+      localStorage.setItem('songlink.volume', String(pct));
+    }
+    wizVol.oninput = sendWizVol;
+    wizVol.onchange = sendWizVol;
+    // 用 savedVol 初始化
+    const sv = parseInt(localStorage.getItem('songlink.volume') || '60', 10);
+    wizVol.value = sv; wizVolNum.textContent = sv;
+
+    $('wiz-3-next').onclick = () => {
+      sendWizVol();
+      showStep(4);
+      // 若步骤 2 选了 local,跳到完成时弹导入
+      if (window._wizWantsImport) {
+        setTimeout(() => openImportModal(), 400);
+      }
+    };
+  }
+
   // 启动
+  applyElderMode();
   if (userName) { $('user').value = userName; $('user-wrap').hidden = false; }
   // 恢复音量
   const savedVol = parseInt(localStorage.getItem('songlink.volume') || '100', 10);
@@ -394,4 +530,12 @@
   setConn('disconnected');
   renderNow(); renderQueue(); renderLyrics(); renderHistory();
   tick();
+
+  // 长辈模式 / 导入 / 引导 钩子
+  $('btn-mode').onclick = toggleElderMode;
+  $('btn-import').onclick = openImportModal;
+  $('btn-import-cancel').onclick = closeImportModal;
+  $('btn-import-pick').onclick = pickFolder;
+  $('btn-import-go').onclick = doImport;
+  setupWizard();
 })();

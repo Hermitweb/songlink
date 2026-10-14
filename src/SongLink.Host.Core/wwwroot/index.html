@@ -19,6 +19,8 @@
     <label>PIN <input id="pin" maxlength="6" inputmode="numeric" pattern="[0-9]*" placeholder="6 位"></label>
     <button id="btn-connect">连接</button>
   </div>
+  <button id="btn-import" class="ghost" title="从电脑选一个音乐文件夹导入">📂 导入音乐</button>
+  <button id="btn-mode" class="ghost" title="切换长辈模式 / 完整模式">👴 长辈模式</button>
 </header>
 
 <main>
@@ -95,5 +97,65 @@
 </main>
 
 <script src="/static/app.js"></script>
+
+<!-- 导入音乐 modal -->
+<div id="import-modal" class="modal hidden" role="dialog" aria-label="导入音乐文件夹">
+  <div class="modal-box">
+    <h3>📂 导入本地音乐</h3>
+    <p class="hint">选一个音乐文件夹,系统会自动扫描里面的 MP3 / FLAC / WAV / M4A 文件并加入点歌库。</p>
+    <div class="row">
+      <input id="import-path" type="text" placeholder="例如 D:\Music 或 /mnt/music">
+      <button id="btn-import-pick">📁 选择文件夹</button>
+    </div>
+    <div class="row">
+      <button id="btn-import-go" class="primary">开始导入</button>
+      <button id="btn-import-cancel" class="ghost">取消</button>
+    </div>
+    <div id="import-result" class="result" hidden></div>
+  </div>
+</div>
+
+<!-- 首次启动引导 wizard -->
+<div id="wizard" class="wizard hidden" role="dialog" aria-label="首次启动引导">
+  <div class="progress" id="wiz-progress">第 1 步 / 共 4 步</div>
+  <div class="step" id="wiz-step-1">
+    <h1>🎤 欢迎使用点歌台</h1>
+    <p>这是一个给家里长辈用的音乐点歌台。<br>操作很简单 — 搜索歌名、点一下就播。</p>
+    <p style="color:#a0c0e0">接下来几步快速设置一下,然后就能用了。</p>
+    <div class="nav"><button id="wiz-1-next" class="primary">开始设置 →</button></div>
+  </div>
+  <div class="step hidden" id="wiz-step-2">
+    <h2>选你的音乐来源</h2>
+    <p>系统能接管你电脑上正在播放的音乐,也能导入本地音乐文件。</p>
+    <div class="opts">
+      <button data-source="auto">🔄 自动接管电脑正在播放的(推荐)<small>QQ 音乐 / 网易云 / 酷狗 / 汽水音乐 都能识别</small></button>
+      <button data-source="local">📁 导入本地音乐文件夹<small>把 MP3 文件放到一个文件夹,然后告诉我们在哪</small></button>
+    </div>
+    <div class="nav"><button id="wiz-2-back" class="ghost">← 上一步</button></div>
+  </div>
+  <div class="step hidden" id="wiz-step-3">
+    <h2>音量调到舒服的位置</h2>
+    <p>用下面的滑条把音量调到舒服的位置,以后可以随时调。</p>
+    <div class="vol-preview">
+      🔊 <input id="wiz-vol" type="range" min="0" max="100" value="60" step="1">
+      <span id="wiz-vol-num" class="muted">60</span>
+    </div>
+    <div class="nav">
+      <button id="wiz-3-back" class="ghost">← 上一步</button>
+      <button id="wiz-3-next" class="primary">下一步 →</button>
+    </div>
+  </div>
+  <div class="step hidden" id="wiz-step-4">
+    <h1>✅ 准备好了!</h1>
+    <p>现在可以:<br>
+      • 在搜索框输入歌名,点一下就播<br>
+      • 点 ⏮ ⏸ ⏭ 控制上一首/暂停/下一首<br>
+      • 拖滑条调音量<br>
+    </p>
+    <p style="color:#a0c0e0">手机扫码也能当遥控器 — 顶部右上角的「手机连」按钮。</p>
+    <div class="nav"><button id="wiz-4-finish" class="primary">开始用 →</button></div>
+  </div>
+</div>
+
 </body>
 </html>
