@@ -342,14 +342,18 @@
     toast('导入完成 — ' + r.imported + ' 首', 'ok');
   }
 
-  // ---------- QR 弹窗(轻量 QR 生成,纯 JS)----------
-  // 极简实现:用纯文本提示 + 在线 URL(浏览器 / WebView2 都支持扫码);这里先简单实现
-  // 生成一个占位 QR(用纯文本),实际生成需要 qrcode 库 — 暂时只显示 URL + PIN。
+  // ---------- QR 弹窗(服务端 QRCoder 生成)----------
+  // Host 暴露 GET /qr?text=URL&size=240 → 返回 PNG。
+  // 扫码内容是 ws://host:port/?pin=XXXXXX(Web 面板 URL),手机浏览器扫到后,
+  // Android 端通过 pair 页面的 "wsUrl + pin" 自动填好(或 web 面板 URL 拿到 token)。
   function openQrModal() {
-    const url = location.origin + '/?pin=' + pinCode;
-    $('qr-url').textContent = url;
-    $('qr-pin').textContent = pinCode || '-';
-    $('qr-img').innerHTML = '<div class="muted">用手机浏览器打开上面 URL 即可</div>';
+    if (!pinCode) { toast('先连上再生成二维码', 'error'); return; }
+    const wsUrl = location.origin + '/?pin=' + encodeURIComponent(pinCode);
+    const androidPayload = JSON.stringify({ wsUrl: wsUrl, pin: pinCode });
+    const imgUrl = '/qr?text=' + encodeURIComponent(androidPayload) + '&size=240';
+    $('qr-img').innerHTML = `<img alt="QR" src="${imgUrl}">`;
+    $('qr-url').textContent = wsUrl;
+    $('qr-pin').textContent = pinCode;
     $('qr-modal').classList.remove('hidden');
   }
   function closeQrModal() { $('qr-modal').classList.add('hidden'); }

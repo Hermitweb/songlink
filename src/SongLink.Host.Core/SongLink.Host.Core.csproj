@@ -24,9 +24,12 @@
     <!-- KRC 解码 -->
     <PackageReference Include="Concentus" Version="2.2.2" />
     <PackageReference Include="SharpCompress" Version="0.38.0" />
-    
-    <!-- Excel export (already added) -->
+
+    <!-- Excel export -->
     <PackageReference Include="EPPlus" Version="7.3.0" />
+
+    <!-- QR 码生成(给 Web 面板"手机扫码"用) -->
+    <PackageReference Include="QRCoder" Version="1.6.0" />
   </ItemGroup>
 
   <ItemGroup>

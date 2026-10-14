@@ -107,7 +107,8 @@ public sealed class HostServer : IAsyncDisposable
         }
     }
 
-    /// <summary>GET / 桌面 Web 面板；GET /static/* 静态资源；GET /art/{ref} 封面；POST /import 导入音源；/docs Swagger UI。</summary>
+    /// <summary>GET / 桌面 Web 面板；GET /static/* 静态资源；GET /art/{ref} 封面；GET /qr?text=… 生成 QR PNG；
+    /// POST /import 导入音源；/docs Swagger UI。</summary>
     private void ServeHttp(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "";
@@ -117,6 +118,39 @@ public sealed class HostServer : IAsyncDisposable
             if (path == "/" || path == "/index.html")
             {
                 ServeStaticFile(ctx, "wwwroot/index.html", "text/html; charset=utf-8");
+            }
+            // 0.1 QR 码生成(GET /qr?text=URL&size=240) — 给 Web 面板"手机扫码连接"用
+            else if (path == "/qr")
+            {
+                var text = ctx.Request.QueryString["text"] ?? "";
+                if (string.IsNullOrEmpty(text) || text.Length > 1024)
+                {
+                    ctx.Response.StatusCode = 400;
+                    return;
+                }
+                int size = 240;
+                int.TryParse(ctx.Request.QueryString["size"], out size);
+                if (size < 96) size = 96;
+                if (size > 800) size = 800;
+                try
+                {
+                    using var qrGen = new QRCoder.QRCodeGenerator();
+                    using var data = qrGen.CreateQrCode(text, QRCoder.QRCodeGenerator.ECCLevel.L);
+                    using var png = new QRCoder.PngByteQRCode(data);
+                    var bytes = png.GetGraphic(size / 25 < 4 ? 4 : size / 25);
+                    ctx.Response.StatusCode = 200;
+                    ctx.Response.ContentType = "image/png";
+                    ctx.Response.ContentLength64 = bytes.Length;
+                    ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
+                }
+                catch (Exception ex)
+                {
+                    ctx.Response.StatusCode = 500;
+                    var err = Encoding.UTF8.GetBytes($"QR 生成失败: {ex.Message}");
+                    ctx.Response.ContentType = "text/plain; charset=utf-8";
+                    ctx.Response.ContentLength64 = err.Length;
+                    ctx.Response.OutputStream.Write(err, 0, err.Length);
+                }
             }
             else if (path.StartsWith("/static/", StringComparison.Ordinal))
             {

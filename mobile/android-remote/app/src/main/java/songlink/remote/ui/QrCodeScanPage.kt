@@ -217,18 +217,28 @@ data class QrData(
     val pin: String
 )
 
+/**
+ * 解析 Web 面板 QR modal 生成的二维码内容。
+ * 格式:JSON {"wsUrl":"ws://host:port/","pin":"6digits"} — 由 Host /qr 端点编码。
+ * 旧版 "host+pin" 字段也兼容(早期 Host 用过)。
+ */
 fun parseQrData(json: String): QrData? {
     try {
-        val jsonStr = Json.parseToJsonElement(json).jsonObject
-        val host = jsonStr["host"]?.jsonPrimitive?.content
-        val pin = jsonStr["pin"]?.jsonPrimitive?.content
-
-        return when {
-            host != null && pin != null -> QrData(host, pin)
-            else -> null
+        val obj = Json.parseToJsonElement(json).jsonObject
+        // 新版:wsUrl + pin
+        val wsUrl = obj["wsUrl"]?.jsonPrimitive?.content
+        val pin = obj["pin"]?.jsonPrimitive?.content
+        if (!wsUrl.isNullOrEmpty() && !pin.isNullOrEmpty()) {
+            // wsUrl 形如 "ws://192.168.15.205:51999/" → 保留给连接逻辑直接用
+            return QrData(wsUrl, pin)
         }
+        // 旧版兼容
+        val host = obj["host"]?.jsonPrimitive?.content
+        if (!host.isNullOrEmpty() && !pin.isNullOrEmpty()) {
+            return QrData(host, pin)
+        }
+        return null
     } catch (e: Exception) {
-        e.printStackTrace()
         return null
     }
 }
