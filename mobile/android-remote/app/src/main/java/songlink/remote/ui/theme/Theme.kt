@@ -7,47 +7,94 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
 import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
+// 亮色配色(默认):与 Web 面板对齐
+private val LightColors = lightColorScheme(
+    primary = BrandBlue,
+    onPrimary = BrandBgCard,
+    primaryContainer = BrandBlueSoft,
+    onPrimaryContainer = BrandBlueDeep,
+    secondary = BrandBlueGrey,
+    onSecondary = BrandBgCard,
+    secondaryContainer = BrandBgSoft,
+    onSecondaryContainer = BrandText,
+    tertiary = BrandSuccess,
+    background = BrandBg,
+    onBackground = BrandText,
+    surface = BrandBgCard,
+    onSurface = BrandText,
+    surfaceVariant = BrandBgSoft,
+    onSurfaceVariant = BrandTextMute,
+    outline = BrandBorder,
+    outlineVariant = BrandBorder,
+    error = BrandDanger,
+    onError = BrandBgCard,
+    errorContainer = BrandDangerSoft,
+    onErrorContainer = BrandDanger,
 )
 
-private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+// 暗色配色(可选)
+private val DarkColors = darkColorScheme(
+    primary = BrandBlueDark,
+    onPrimary = BrandTextDark,
+    primaryContainer = BrandBlueSoftDark,
+    onPrimaryContainer = BrandBlueDark,
+    secondary = BrandTextMuteDark,
+    onSecondary = BrandTextDark,
+    secondaryContainer = BrandBgSoftDark,
+    onSecondaryContainer = BrandTextDark,
+    tertiary = BrandSuccessDark,
+    background = BrandBgDark,
+    onBackground = BrandTextDark,
+    surface = BrandBgCardDark,
+    onSurface = BrandTextDark,
+    surfaceVariant = BrandBgSoftDark,
+    onSurfaceVariant = BrandTextMuteDark,
+    outline = BrandBorderDark,
+    outlineVariant = BrandBorderDark,
+    error = BrandDangerDark,
+    onError = BrandTextDark,
+    errorContainer = BrandDangerSoftDark,
+    onErrorContainer = BrandDangerDark,
+)
+
+// 排版:稍大的标题/正文,配合大按钮
+private val SongLinkTypography = Typography(
+    titleLarge = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.SemiBold),
+    titleMedium = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
+    titleSmall = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium),
+    bodyLarge = TextStyle(fontSize = 16.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp),
+    bodySmall = TextStyle(fontSize = 12.sp),
+    labelLarge = TextStyle(fontSize = 14.sp, fontWeight = FontWeight.Medium),
+    labelMedium = TextStyle(fontSize = 12.sp, fontWeight = FontWeight.Medium),
+    labelSmall = TextStyle(fontSize = 11.sp, fontWeight = FontWeight.Medium),
 )
 
 @Composable
 fun SongLinkTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
-    
+    val colorScheme = if (darkTheme) DarkColors else LightColors
+
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
             val window = (view.context as Activity).window
-            window.statusBarColor = colorScheme.primary.toArgb()
+            window.statusBarColor = colorScheme.surface.toArgb()
             WindowCompat.getInsetsController(window, view).isAppearanceLightStatusBars = !darkTheme
         }
     }
 
     MaterialTheme(
         colorScheme = colorScheme,
-        // 必须显式限定：kotlin.text.Typography（stdlib 里的废弃类）与
-        // androidx.compose.material3.Typography 撞名，未限定时会解析到前者
-        typography = androidx.compose.material3.Typography(),
+        typography = SongLinkTypography,
         content = content
     )
 }

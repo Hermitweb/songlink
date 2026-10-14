@@ -133,11 +133,11 @@ fun StreamPage(
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
                     Text(
-                        text = if (isStreaming) "🎵 串流进行中" else "⏸️ 等待开始",
+                        text = if (isStreaming) "串流进行中" else "等待开始",
                         style = MaterialTheme.typography.titleLarge,
-                        color = if (isStreaming) 
-                            MaterialTheme.colorScheme.onPrimaryContainer 
-                        else 
+                        color = if (isStreaming)
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        else
                             MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     
@@ -243,8 +243,8 @@ fun StreamPage(
                         2. 在手机任意音乐 App 播放音乐
                         3. 确保电脑端 SongLink Host 已启动
                         4. 声音将通过 PC 蓝牙音箱输出
-                        
-                        ⚠️ 注意：部分受 DRM 保护的内容可能无法抓取
+
+                        注意:部分受 DRM 保护的内容可能无法抓取
 """.trimIndent(),
                         style = MaterialTheme.typography.bodyMedium
                     )

@@ -145,10 +145,10 @@ class HistoryExcelExporter {
     /// <summary>生成预览文本</summary>
     fun generatePreviewText(count: Int): String {
         return """
-            📊 SongLink 播放历史记录导出报告
+            SongLink 播放历史记录导出报告
 
-            总计歌曲数：$count
-            导出时间：${dateFormat.format(Date())}
+            总计歌曲数:$count
+            导出时间:${dateFormat.format(Date())}
 
             文件格式：.xlsx (无 POI 依赖的纯 JDK 实现)
             包含列：时间 | 歌曲 | 艺人 | 专辑 | 时长

@@ -28,7 +28,7 @@ fun HistoryPage(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("📊 播放历史") },
+                title = { Text("播放历史") },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "返回")
@@ -38,8 +38,8 @@ fun HistoryPage(
                     IconButton(onClick = { showExportDialog = true }) {
                         Icon(Icons.Default.Download, contentDescription = "导出 Excel")
                     }
-                    
-                    IconButton(onClick = { 
+
+                    IconButton(onClick = {
                         if (historyList.isNotEmpty()) {
                             PlaybackHistoryManager.clearAll()
                         }

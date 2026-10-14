@@ -31,7 +31,7 @@ import java.net.InetAddress
  *      或 [AudioFormat.CHANNEL_IN_MONO] + VOICE_CALL（API 26-28 fallback）
  *   4. 本类按 §4 帧格式封 UDP datagram，48 kHz / 单声道 / 20 ms / 1920 B/帧
  *
- * ⚠️ 当前 commit 限制：
+ * NOTE 当前 commit 限制:
  *  - **载荷是裸 16-bit PCM**（不是 Opus），用 flags bit2 = 1 标识，见 [FLAG_PCM_RAW]
  *  - 真正的 Opus 编码要 libopus JNI（~500 KB），留待独立 PR；flags bit2 = 0 时 Host 走 OpusCodec
  *  - UI Activity / CaptureService 的 MediaProjection 入口未提交——本类只暴露 hook；调用方未注入 token 时 API 29+ 直接报 "NEED_PROJECTION"，不会静默无数据
