@@ -1,5 +1,7 @@
 @echo off
 chcp 65001 >nul
+REM 延迟扩展：下方 if/else 代码块中要用 !answer! 读取 set /p 的输入
+setlocal EnableDelayedExpansion
 title SongLink M2.5 - 真机测试自动化脚本
 
 echo.
@@ -51,7 +53,10 @@ echo [✓] 所有前置条件检查通过!
 echo.
 
 REM === 开始测试流程 ===
-set /p mode="请选择测试模式:\n  A: 完整自动化测试 (需要真机)\n  B: 核心功能手动验证\n输入选项 (A/B/AUTO/MANUAL): "
+echo 请选择测试模式:
+echo   A: 完整自动化测试 (需要真机)
+echo   B: 核心功能手动验证
+set /p mode="输入选项 (A/B/AUTO/MANUAL): "
 
 if /i not "%mode%"=="A" and not "%mode%"=="B" and not "%mode%"=="AUTO" and not "%mode%"=="MANUAL" (
     echo [错误] 无效的选项，请输入 A、B、AUTO 或 MANUAL
@@ -72,7 +77,9 @@ REM 检查设备连接
 adb devices | findstr "device" >nul 2>&1
 if %errorlevel% neq 0 (
     echo [错误] 未检测到连接的 Android 设备
-    echo 请确认：\n  1. 设备 USB 调试已开启\n  2. 授权此电脑
+    echo 请确认:
+    echo   1. 设备 USB 调试已开启
+    echo   2. 授权此电脑
     pause
     exit /b 1
 )
@@ -80,15 +87,33 @@ if %errorlevel% neq 0 (
 echo [✓] 检测到 Android 设备
 adb devices | findstr "device"
 
-REM 安装 APK
+REM 安装 APK（仓库内不含预编译 APK，需先自行构建）
 cd mobile/android-remote/app
-echo [正在安装 SongLink Remote APk...]
-adb install -r build/outputs/apk/debug/app-debug.apk
-if %errorlevel% neq 0 (
-    echo [错误] APK 安装失败
+set "APK_PATH=build\outputs\apk\debug\app-debug.apk"
+if not exist "%APK_PATH%" (
+    echo [错误] 未找到 APK: mobile\android-remote\app\%APK_PATH%
+    echo.
+    echo 仓库中不包含预编译的 .apk 文件，请先构建:
+    echo   cd mobile\android-remote
+    echo   gradlew.bat :app:assembleDebug
+    echo.
+    echo 构建产物路径:
+    echo   mobile\android-remote\app\build\outputs\apk\debug\app-debug.apk
+    echo.
+    echo 也可以改用 MANUAL 模式手工验证。
+    cd "..\..\..\scripts"
+    pause
     exit /b 1
 )
-cd "..\..\scripts"
+
+echo [正在安装 SongLink Remote APK...]
+adb install -r "%APK_PATH%"
+if %errorlevel% neq 0 (
+    echo [错误] APK 安装失败
+    cd "..\..\..\scripts"
+    exit /b 1
+)
+cd "..\..\..\scripts"
 
 echo [✓] APK 安装成功
 echo.
@@ -98,7 +123,11 @@ pause
 
 REM 等待用户手动操作
 echo.
-echo [等待中] 请在手机上完成以下操作：\n  1. 打开 SongLink App\n  2. Pair Page -> 输入 host URL 和 PIN\n  3. 连接成功后进入 StreamPage -> 点击"开始串流"\n  4. 保持串流状态至少 30 秒
+echo [等待中] 请在手机上完成以下操作:
+echo   1. 打开 SongLink App
+echo   2. Pair Page -^> 输入 host URL 和 PIN
+echo   3. 连接成功后进入 StreamPage -^> 点击"开始串流"
+echo   4. 保持串流状态至少 30 秒
 pause
 
 goto SHOW_SUMMARY
@@ -111,9 +140,13 @@ echo.
 
 type checklists.txt
 echo.
-echo 请按以下步骤逐一验证：\n  [P0-1] AudioPlaybackCapture 音频采集\n  [P0-2] Bluetooth RFCOMM 配对\n  [P0-3] QR Code 扫码配对\n  [P0-4] 实时频谱可视化
+echo 请按以下步骤逐一验证:
+echo   [P0-1] AudioPlaybackCapture 音频采集
+echo   [P0-2] Bluetooth RFCOMM 配对
+echo   [P0-3] QR Code 扫码配对
+echo   [P0-4] 实时频谱可视化
 echo.
-echo 每完成一项，记录实测数据到 docs/真机测试验证报告.md
+echo 每完成一项，记录实测数据到 真机测试最终报告.md（唯一权威报告）
 echo.
 pause
 
@@ -124,9 +157,11 @@ echo ========================================
 echo   测试总结模板
 echo ========================================
 echo.
-echo 请将你的测试结果填入 docs/真机测试验证报告.md 的"实测结果"列
+echo 请将你的测试结果填入 真机测试最终报告.md（唯一权威报告）
 echo.
-echo 示例记录格式：\n | 测试项 P0-1 | +5~15% | +12% | ✓ |\n | CPU 提升 | Pass |
+echo 示例记录格式:
+echo   ^| 测试项 ^| 预期 ^| 实测 ^| 结论 ^|
+echo   ^| CPU 提升 ^| Pass ^|
 echo.
 echo ========================================
 echo   测试完成后请提交报告！

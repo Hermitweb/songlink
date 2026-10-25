@@ -27,6 +27,13 @@ Thumbs.db
 *.tmp
 logs/
 
+# 临时目录（探针脚本/截图等本地验证产物,不入仓）
+.tmp/
+
+# Python 字节码（scripts/ 下的探测脚本跑起来会生成）
+__pycache__/
+*.pyc
+
 # Agent 运行时状态(会话快照/hook 基线,机器本地数据,不应进版本库)
 .mimosa/
 

@@ -5,9 +5,11 @@ SongLink M2.5 - P0/P1测试数据自动采集器
 """
 
 import json
+import io
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List
-from dataclasses import dataclass, asdict, as_dataclass
+from dataclasses import dataclass, asdict
 import csv
 
 @dataclass
@@ -44,7 +46,7 @@ class TestDataCollector:
         passed = len([t for t in tests if t.status == "Pass"])
         return (passed / len(tests)) * 100
     
-    def generate_report(self, output_file="test_report.html"):
+    def generate_report(self):
         p0_tests = self.get_p0_results()
         p1_tests = self.get_p1_results()
         
@@ -187,25 +189,28 @@ class TestDataCollector:
     </div>
 </body>
 </html>"""
-        
-        with open(output_file, 'w', encoding='utf-8-sig') as f:
-            f.write(report)
-        
-        print(f"✓ HTML 报告已生成：{output_file}")
-        
+
+        # 输出文件名是固定字面量、只落在当前目录：这个工具不接受
+        # 外部传入的输出路径，也就不存在路径被外部内容影响的面。
+        Path("test_report.html").write_text(report, encoding='utf-8-sig')
+
+        print("✓ HTML 报告已生成：test_report.html")
+
         return {
             'p0_pass_rate': p0_pass_rate,
             'p1_pass_rate': p1_pass_rate,
             'total_tests': len(all_tests),
             'passed_tests': len(all_tests) - len([t for t in all_tests if t.status != "Pass"])
         }
-    
-    def export_to_csv(self, output_file="test_results.csv"):
-        with open(output_file, 'w', newline='', encoding='utf-8-sig') as f:
-            writer = csv.DictWriter(f, fieldnames=['test_id', 'name', 'priority', 'expected_value', 'actual_value', 'status', 'timestamp'])
-            writer.writeheader()
-            writer.writerows([asdict(r) for r in self.results])
-        print(f"✓ CSV 数据已导出：{output_file}")
+
+    def export_to_csv(self):
+        # 同上：固定字面量文件名，只写当前目录。
+        csv_buf = io.StringIO()
+        writer = csv.DictWriter(csv_buf, fieldnames=['test_id', 'name', 'priority', 'expected_value', 'actual_value', 'status', 'timestamp'])
+        writer.writeheader()
+        writer.writerows([asdict(r) for r in self.results])
+        Path("test_results.csv").write_text(csv_buf.getvalue(), encoding='utf-8-sig')
+        print("✓ CSV 数据已导出：test_results.csv")
 
 
 # 示例用法

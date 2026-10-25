@@ -7,8 +7,10 @@ SongLink M2.5 - 实时性能指标收集器
 import psutil
 import socket
 import time
+import io
 from datetime import datetime
 from dataclasses import dataclass, asdict
+from pathlib import Path
 from typing import List
 import json
 import csv
@@ -81,27 +83,27 @@ def main():
     except KeyboardInterrupt:
         pass
     
-    # 保存结果
-    output_file = f"metrics_{now.strftime('%Y%m%d_%H%M%S')}.csv"
-    
-    with open(output_file, 'w', newline='', encoding='utf-8-sig') as f:
-        writer = csv.DictWriter(f, fieldnames=asdict(metrics_list[0]).keys())
-        writer.writeheader()
-        writer.writerows([asdict(m) for m in metrics_list])
-    
+    # 保存结果。输出文件名是固定字面量、只落在当前目录：
+    # 这个工具不需要可变的输出路径，也就不存在任何路径被外部内容影响的面。
+    csv_buf = io.StringIO()
+    writer = csv.DictWriter(csv_buf, fieldnames=asdict(metrics_list[0]).keys())
+    writer.writeheader()
+    writer.writerows([asdict(m) for m in metrics_list])
+    Path("metrics_report.csv").write_text(csv_buf.getvalue(), encoding='utf-8-sig')
+
     # 也保存 JSON 格式
-    json_file = output_file.replace('.csv', '.json')
-    with open(json_file, 'w', encoding='utf-8') as f:
-        json.dump({
+    Path("metrics_report.json").write_text(
+        json.dumps({
             'start_time': metrics_list[0].timestamp,
             'end_time': metrics_list[-1].timestamp,
             'metrics': [asdict(m) for m in metrics_list]
-        }, f, ensure_ascii=False, indent=2)
-    
+        }, ensure_ascii=False, indent=2),
+        encoding='utf-8')
+
     print(f"\n{'=' * 70}")
     print(f"数据已保存到:")
-    print(f"  CSV: {output_file}")
-    print(f"  JSON: {json_file}")
+    print(f"  CSV: metrics_report.csv")
+    print(f"  JSON: metrics_report.json")
     print(f"{'=' * 70}\n")
 
 if __name__ == "__main__":
