@@ -5,6 +5,7 @@ using System.Net;
 using System.Text;
 using SongLink.Protocol;
 using SongLink.Host.AudioStream;
+using SongLink.Host.DeepLink;
 using System.Net.Sockets; // For UDP port validation if needed
 
 namespace SongLink.Host;
@@ -20,9 +21,9 @@ public sealed class HostServer : IAsyncDisposable
     private readonly MediaBus _bus;
     private readonly IPlayerAdapter _adapter;
     private readonly LyricService _lyric = new();
-    private readonly ArtStore _art = new();
+    private readonly ArtStore _art;
     private readonly PlayQueue _queue = new();
-    private readonly LocalLibrary _library = new();
+    private readonly LocalLibrary _library;
     private readonly AuthManager _auth;
     private readonly string _hostKey = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(16));
     private readonly ReplayBuffer _replay = new();
@@ -35,6 +36,9 @@ public sealed class HostServer : IAsyncDisposable
     private Task? _acceptLoop;
     private long _seq;
     private string _lastTrackKey = "";
+
+    /// <summary>POST /art 单张封面上限(2 MB)。封面用不着更大,超了就是异常客户端。</summary>
+    private const int MaxArtBytes = 2 * 1024 * 1024;
 
     public string Pin => _auth.Pin;
     public string HostKey => _hostKey;
@@ -50,12 +54,21 @@ public sealed class HostServer : IAsyncDisposable
         public string? Token { get; set; }
     }
 
-    public HostServer(IPlayerAdapter adapter, int port, string? pin = null, IAudioRenderer? audioRenderer = null, bool requireFrameSig = false)
+    /// <param name="dataDir">
+    /// 曲库与封面的存放根目录；为 null 时用 <see cref="AppContext.BaseDirectory"/>。
+    /// **桌面 app 必须显式传入**：单文件发布时 BaseDirectory 指向每次启动重新解压的临时目录，
+    /// 用户导入的歌和上传的封面放那儿等于每次重启都丢失；而且适配器与 HostServer 若各自
+    /// 用不同目录，面板「导入本地音乐」导进去的歌，搜索时会一个都搜不到。
+    /// </param>
+    public HostServer(IPlayerAdapter adapter, int port, string? pin = null, IAudioRenderer? audioRenderer = null, bool requireFrameSig = false, string? dataDir = null)
     {
         _adapter = adapter;
         _auth = new AuthManager(pin);
         _audioRenderer = audioRenderer;
         _requireFrameSig = requireFrameSig;
+        var root = dataDir ?? AppContext.BaseDirectory;
+        _art = new ArtStore(Path.Combine(root, "art"));
+        _library = new LocalLibrary(Path.Combine(root, "library"));
         _bus = new MediaBus(adapter);
         _bus.Changed += OnStateChanged;
     }
@@ -108,7 +121,8 @@ public sealed class HostServer : IAsyncDisposable
     }
 
     /// <summary>GET / 桌面 Web 面板；GET /static/* 静态资源；GET /art/{ref} 封面；GET /qr?text=… 生成 QR PNG；
-    /// POST /import 导入音源；/docs Swagger UI。</summary>
+    /// POST /import 导入音源；POST /art?name={ref} 上传封面（手机 → 主机，原始字节非 multipart）；
+    /// /docs Swagger UI。</summary>
     private void ServeHttp(HttpListenerContext ctx)
     {
         var path = ctx.Request.Url?.AbsolutePath ?? "";
@@ -250,6 +264,55 @@ components:
                 }
                 else ctx.Response.StatusCode = 404;
             }
+
+            // 3.1 封面上传 (POST /art?name={ref}, body = 原始图片字节,非 multipart、非 base64)
+            // 手机把正在播放的封面交给主机,面板再用 GET /art/{ref} 把它拉下来 —— 这是
+            // "手机串流 + 歌词封面显示"链路里此前完全缺失的一环(原来只有下行,没有上行)。
+            //
+            // ⚠ 安全:本端点**不鉴权**,与既有 GET /art/{ref} 保持一致(同一个 art 目录)。
+            // 风险是同网段任意设备都能往 art 目录写图(垃圾图 / 占磁盘)。之所以可接受:
+            //   1) ref 由客户端生成且受限死字符集 IsSafeRef([A-Za-z0-9._-] 且无 ".."),写不到 art 目录外;
+            //   2) 只认 3 种图片 Content-Type + 2MB 上限,写不进可执行/网页文件;
+            //   3) 写入失败只回 500,不泄露异常细节。
+            // 一旦 Host 需要暴露到公网(而不是家庭局域网),这里必须补 token 鉴权 + 配额/清理策略。
+            else if (ctx.Request.HttpMethod == "POST" && path == "/art")
+            {
+                // 先看 Content-Type:不在白名单里连 body 都不读。
+                var ct = (ctx.Request.ContentType ?? "").Split(';')[0].Trim().ToLowerInvariant();
+                if (ct is not ("image/png" or "image/jpeg" or "image/webp")) { ctx.Response.StatusCode = 400; return; }
+
+                var refId = ctx.Request.QueryString["name"] ?? "";
+                if (!ArtStore.IsSafeRef(refId) || !ArtStore.IsKnownExt(refId)) { ctx.Response.StatusCode = 400; return; }
+
+                // 限流:封面 2MB 绰绰有余。先看声明长度,不用 ReadToEnd —— 无上限的流能把内存吃光;
+                // chunked(无声明长度)或长度撒谎的请求,靠下面的分块读 + 同一个上限兜底。
+                // 注意:超限时仍然把 body 抽干(封顶 8x),否则我们边收边回响应,
+                // 客户端那边会拿到 connection reset 而不是我们精心设的 413。
+                var over = ctx.Request.ContentLength64 > MaxArtBytes;
+                byte[] body;
+                using (var ms = new MemoryStream())
+                {
+                    var buf = new byte[16 * 1024];
+                    long total = 0;
+                    int read;
+                    while ((read = ctx.Request.InputStream.Read(buf, 0, buf.Length)) > 0)
+                    {
+                        total += read;
+                        if (total > MaxArtBytes) { over = true; if (total > MaxArtBytes * 8) break; }
+                        else ms.Write(buf, 0, read);
+                    }
+                    body = ms.ToArray();
+                }
+                if (over) { ctx.Response.StatusCode = 413; return; }
+
+                if (!_art.Save(refId, body)) { ctx.Response.StatusCode = 500; return; }
+
+                var ok = Encoding.UTF8.GetBytes("ok");
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "text/plain; charset=utf-8";
+                ctx.Response.ContentLength64 = ok.Length;
+                ctx.Response.OutputStream.Write(ok, 0, ok.Length);
+            }
             
             // 4. 音源导入
             else if (ctx.Request.HttpMethod == "POST" && path == "/import")
@@ -355,6 +418,9 @@ components:
                     conn.Token = _auth.IssueToken(h.Device ?? "unknown");
                     SendTo(conn, new AuthResult { Ref = h.Id ?? "", Ok = true, Token = conn.Token, HostKey = _requireFrameSig ? _hostKey : null });
                     SendTo(conn, new Hello { Role = "host", Device = Environment.MachineName, Os = "Windows" });
+                    // 告诉面板"现在有哪些在线平台、各自能做什么" —— 面板要靠这个
+                    // 才知道搜出来的歌到底能不能点得动。
+                    SendTo(conn, BuildPlatformsEvent());
                     if (h.LastSeq is > 0) ReplaySince(conn, h.LastSeq.Value);   // §7 断线补发
                     else if (_bus.Current is not null) SendTo(conn, new State { Now = _bus.Current.Clone() });
                 }
@@ -558,7 +624,20 @@ components:
                 };
                 SendTo(conn, new Ack { Ref = c.Id ?? "", Ok = ok });
                 if (!ok && c.Action == "pick")
-                    SendTo(conn, new ErrorFrame { Ref = c.Id, Code = (_adapter.Caps & AdapterCapability.Pick) == 0 ? "PICK_UNSUPPORTED" : "APP_NOT_FOUND" });
+                {
+                    // 把**具体原因**透给面板：以前只有一句 APP_NOT_FOUND，
+                    // 用户完全不知道是没装客户端、没版权、还是要 VIP。
+                    var reason = (_adapter as IAdapterDiagnostics)?.LastPickFailureReason;
+                    SendTo(conn, new ErrorFrame
+                    {
+                        Ref = c.Id,
+                        Code = (_adapter.Caps & AdapterCapability.Pick) == 0 ? "PICK_UNSUPPORTED" : "APP_NOT_FOUND",
+                        Hint = reason,
+                    });
+                }
+                // 点歌之后各平台的"最近失败原因"会变，把最新状态再推一遍，
+                // 面板上的平台标签能立刻反映"这次为什么没响起来"。
+                if (c.Action == "pick") Broadcast(BuildPlatformsEvent());
                 // pick 成功 → 自动入播放历史(去重由 LocalLibrary.PlayHistory 倒序 + 50 上限保证)
                 if (ok && c.Action == "pick")
                 {
@@ -743,6 +822,36 @@ components:
         return new EventFrame { Name = "queue-updated", Queue = arr };
     }
 
+    /// <summary>
+    /// 构造"在线平台状态"事件。
+    ///
+    /// <para>只有接管模式（<see cref="TakeoverAdapter"/>）才有在线平台；别的适配器
+    /// 不实现 <see cref="IAdapterDiagnostics"/>，这时推一个**空列表**过去 ——
+    /// 面板据此就知道"这里没有在线平台"，而不是一直等一个永远不来的事件。</para>
+    ///
+    /// <para>为什么把"真实能力"（能搜 / 能点）告诉面板：三家的点歌通道差别很大，
+    /// 面板上一律写"可点歌"、用户点下去发现放不出来，那比一开始就说清楚糟糕得多。</para>
+    /// </summary>
+    private EventFrame BuildPlatformsEvent()
+    {
+        var arr = new System.Text.Json.Nodes.JsonArray();
+        var diag = _adapter as IAdapterDiagnostics;
+        if (diag is not null)
+        {
+            foreach (var p in diag.PlatformStatuses)
+            {
+                arr.Add(new System.Text.Json.Nodes.JsonObject
+                {
+                    ["kind"] = p.Kind,
+                    ["name"] = p.Name,
+                    ["capability"] = p.Capability.ToString(),
+                    ["note"] = p.Note,
+                });
+            }
+        }
+        return new EventFrame { Name = "platforms", Platforms = arr };
+    }
+
     /// <summary>每连接唯一的发送循环：串行、按序把出箱帧写到 socket（seq 已在入队时于锁内赋好）。</summary>
     private async Task SendLoopAsync(ClientConn conn)
     {
@@ -792,7 +901,12 @@ components:
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
+        // 幂等：DisposeAsync 可能被调用两次（await using + 显式调用都是常见写法），
+        // 第二次再 Cancel 一个已经 Dispose 掉的 CTS 会抛 ObjectDisposedException，
+        // 让"正常收尾"变成"关闭时崩溃"。
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { /* 已 dispose */ }
         foreach (var conn in _clients.Values) conn.Outbox.Writer.TryComplete();
         foreach (var conn in _clients.Values)
         {
@@ -813,4 +927,7 @@ components:
         _audioSink?.Dispose();
         await _bus.DisposeAsync();
     }
+
+    /// <summary>是否已经释放过（DisposeAsync 幂等保护）。</summary>
+    private int _disposed;
 }

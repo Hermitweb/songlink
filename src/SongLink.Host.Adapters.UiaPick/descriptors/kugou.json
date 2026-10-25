@@ -1,12 +1,23 @@
 {
-  // 酷狗音乐 —— 本机已用 computer-use 探测(2026-10-05)：
-  //   主进程 KuGou；主播放窗 UIA 树近乎空(仅任务栏歌词浮层暴露 Custom+按钮)，
-  //   搜索框/歌单为 CEF/自绘，未进 UIA → UIA 点歌不可用，须走 OCR 兜底(架构 R2)。
-  //   searchBoxPoint 为屏幕物理像素，需按实际分辨率校准(截图中搜索框位于窗口顶部居中)。
+  // 酷狗音乐 Windows 桌面客户端 —— 坐标**尚未标定**（2026-10-19 真机）
+  //
+  // 实测结论（这台机器，KuGou.exe 20.1.32.27840）：
+  //   · 客户端是 CEF（libcef.dll），远程调试被编译版禁用 → 没有 CDP
+  //   · 社区那套 workbuddy 控制桥（kugou://workbuddy?p=端口）本机**不支持**：
+  //     对整个安装目录做字节级搜索，"workbuddy" 零命中；需要客户端 ≥ 20.1.40
+  //   · `kugou://` 已注册为 KuGou.exe "%1"，但可用格式未确证 → 不猜
+  //   · 客户端**会**注册系统媒体会话（AppId = "kugou"），所以传输控制与"真在播"校验都能用
+  //   · 窗口类 kugou_ui，但**歌手模式**下它是全屏歌词页（没有搜索框），
+  //     必须先让用户切回主界面才能点歌
+  //
+  // 标定方法：把酷狗切回主界面 → 截窗口图 → 读搜索框与结果第一行的位置 → 换算成 0..1 比例填这里。
   "appId": "kugou",
   "displayName": "酷狗音乐",
   "exeNames": ["KuGou"],
   "windowTitleRegex": "酷狗音乐",
+  "windowClassName": "kugou_ui",
+  "mediaSessionAppId": "kugou",
+  "blockWhenScreenFilling": true,
   "launchPath": null,
 
   "searchBoxAutomationId": null,
@@ -15,7 +26,11 @@
   "resultItemAutomationId": null,
   "resultItemNameRegex": null,
   "doubleClickResult": true,
-  "pickTimeoutMs": 6000,
+  "pickTimeoutMs": 2500,
+
+  // 未标定 → 点歌会如实报"未标定"，不会瞎点
+  "searchBoxRatio": null,
+  "resultItemRatio": null,
 
   "searchBoxPoint": [470, 61],
   "resultRegion": [300, 120, 700, 480],

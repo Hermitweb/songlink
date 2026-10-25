@@ -1,5 +1,6 @@
 using Windows.Foundation;
 using Windows.Media.Control;
+using SongLink.Host.DeepLink;
 using SongLink.Protocol;
 
 namespace SongLink.Host.Adapters.Smtc;
@@ -19,9 +20,18 @@ namespace SongLink.Host.Adapters.Smtc;
 /// TryGetMediaPropertiesAsync()，播放信息走 GetPlaybackInfo()，时间轴走 GetTimelineProperties()；
 /// 事件是 CurrentSessionChanged（不是 CurrentChanged），切歌是 TrySkipNextAsync（不是 Ahead）。
 /// </summary>
-public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
+public sealed class SmtcAdapter : IPlayerAdapter, IPlaybackProbe, IPlaybackControl, IDisposable
 {
     public string AppId => "smtc-generic";
+
+    /// <summary>
+    /// 只跟踪**指定 App** 的媒体会话；为 null 时跟随"当前会话"（用户在听什么就接管什么）。
+    ///
+    /// <para>为什么要按 App 定向：接管模式下电脑上可能同时开着酷狗和 QQ音乐，
+    /// 而"当前会话"只有一个。校验"QQ音乐 点的那首歌有没有响"时，
+    /// 必须去问 QQ音乐 自己的会话，不能问当前会话（可能是另一个 App）。</para>
+    /// </summary>
+    public string? TargetAppId { get; init; }
     public AdapterCapability Caps => AdapterCapability.ReadMeta | AdapterCapability.Transport;
 
     private readonly object _lock = new();
@@ -76,12 +86,41 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
         var mgr = await GlobalSystemMediaTransportControlsSessionManager.RequestAsync();
         _onCurrentSessionChanged = (sender, _) =>
         {
-            try { HookSession(sender.GetCurrentSession()); } catch { /* 会话切换竞态，忽略本拍 */ }
+            try
+            {
+                // 指定了 App 就重新在会话表里找它（当前会话变成别的 App 时也不丢）
+                var mgr = sender as GlobalSystemMediaTransportControlsSessionManager;
+                HookSession(mgr is not null ? SelectSession(mgr) : sender.GetCurrentSession());
+            }
+            catch { /* 会话切换竞态，忽略本拍 */ }
         };
         mgr.CurrentSessionChanged += _onCurrentSessionChanged;
         lock (_lock) { _mgr = mgr; }
-        HookSession(mgr.GetCurrentSession());
+        HookSession(SelectSession(mgr));
         _init = true;
+    }
+
+    /// <summary>
+    /// 选要跟踪的会话：指定了 App 就找那个 App 的会话，没指定就跟随当前会话。
+    /// </summary>
+    private GlobalSystemMediaTransportControlsSession? SelectSession(
+        GlobalSystemMediaTransportControlsSessionManager mgr)
+    {
+        if (string.IsNullOrWhiteSpace(TargetAppId)) return mgr.GetCurrentSession();
+
+        try
+        {
+            foreach (var s in mgr.GetSessions())
+            {
+                var id = s.SourceAppUserModelId;
+                if (id is null) continue;
+                if (id.Equals(TargetAppId, StringComparison.OrdinalIgnoreCase)) return s;
+                // 有些 App 的 AppId 带路径/后缀，做包含匹配兜底
+                if (id.Contains(TargetAppId, StringComparison.OrdinalIgnoreCase)) return s;
+            }
+        }
+        catch { /* 枚举失败 → 当作没有该 App 的会话 */ }
+        return null;
     }
 
     private void HookSession(GlobalSystemMediaTransportControlsSession? session)
@@ -193,6 +232,57 @@ public sealed class SmtcAdapter : IPlayerAdapter, IDisposable
         _lastVolume = Math.Clamp(volume, 0.0, 1.0);
         return Task.FromResult(true);
     }
+
+    // ===================== 播放校验探针（IPlaybackProbe） =====================
+
+    /// <summary>
+    /// 读一帧当前播放快照。
+    ///
+    /// <para>用途是**校验点歌是不是真的成功了**：命令发出去 ≠ 有声音。
+    /// 网易云的实测里，切歌成功但状态是 Stop（没版权）；QQ音乐非会员点 VIP 歌会弹付费窗。
+    /// 这两种都必须被如实报成失败，所以需要一个能读"系统媒体会话"的探针。</para>
+    /// </summary>
+    public async Task<PlaybackSnapshot?> ReadAsync(CancellationToken ct = default)
+    {
+        if (!_init)
+        {
+            _initTask ??= EnsureInitAsync();
+            try { await _initTask.WaitAsync(TimeSpan.FromSeconds(3), ct); }
+            catch (OperationCanceledException) { throw; }
+            catch { return null; }
+        }
+
+        var s = Session;
+        if (s is null) return null;
+
+        string title = "", artist = "", status = "stopped";
+        try
+        {
+            var mp = await s.TryGetMediaPropertiesAsync().AsTask();
+            if (mp is not null)
+            {
+                title = mp.Title ?? "";
+                artist = mp.Artist ?? "";
+            }
+            var pi = s.GetPlaybackInfo();
+            status = MapStatus(pi?.PlaybackStatus ?? GlobalSystemMediaTransportControlsSessionPlaybackStatus.Stopped);
+        }
+        catch
+        {
+            return null;   // 会话刚好被关掉：这一拍读不到，不当成"在播"
+        }
+
+        return new PlaybackSnapshot(title, artist, status, AppIdOf(s));
+    }
+
+    private static string AppIdOf(GlobalSystemMediaTransportControlsSession s)
+    {
+        try { return s.SourceAppUserModelId ?? ""; } catch { return ""; }
+    }
+
+    // —— IPlaybackControl：给"切歌后仍是暂停"的情况补一次播放 ——
+    async Task<bool> IPlaybackControl.PlayAsync(CancellationToken ct) => await Play(ct);
+    async Task<bool> IPlaybackControl.PauseAsync(CancellationToken ct) => await Pause(ct);
 
     public void Dispose()
     {

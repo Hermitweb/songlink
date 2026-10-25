@@ -4,6 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>点歌台</title>
+<!-- 品牌图标（由 scripts/generate-brand-icons.py 从 assets/brand 原稿生成） -->
+<link rel="icon" href="/static/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/static/brand/logo-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="/static/brand/logo-180.png">
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
@@ -25,6 +29,8 @@
     <symbol id="i-vmute" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" fill="currentColor" fill-opacity="0.15"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/></symbol>
     <symbol id="i-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></symbol>
     <symbol id="i-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></symbol>
+    <symbol id="i-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
+    <symbol id="i-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></symbol>
     <symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></symbol>
     <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/></symbol>
     <symbol id="i-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></symbol>
@@ -49,7 +55,7 @@
 <!-- 顶部条 -->
 <header class="topbar">
   <div class="brand">
-    <svg class="ico ico-md"><use href="#i-headset"/></svg>
+    <img class="brand-logo" src="/static/brand/logo-64.png" alt="SongLink 点歌台" width="26" height="26">
     <span class="brand-name">点歌台</span>
   </div>
   <div id="conn" class="conn-pill off">
@@ -75,7 +81,7 @@
     <!-- 现在播放卡片 -->
     <section class="card now-card">
       <div class="now-art" id="art-wrap">
-        <svg class="ico ico-xl ico-mute"><use href="#i-headset"/></svg>
+        <img class="art-placeholder" src="/static/brand/illustration-512.png" alt="">
       </div>
       <div class="now-meta">
         <div class="now-title" id="title">—</div>
@@ -85,7 +91,7 @@
           <span class="state-pill" id="status-pill">空闲</span>
           <span class="time" id="time">0:00 / 0:00</span>
         </div>
-        <!-- 进度条(可点) -->
+        <!-- 进度条(仅展示,Host 暂无 seek 指令) -->
         <div class="progress-row">
           <div class="progress-track" id="progress-track">
             <div class="progress-fill" id="progress-fill"></div>
@@ -131,6 +137,8 @@
         <input id="kw" placeholder="输入歌名或歌手" autocomplete="off">
         <button id="btn-search" class="btn primary">搜索</button>
       </div>
+      <!-- 在线平台能力标签：Host 推来，告诉用户搜到的歌到底能不能点得动 -->
+      <div id="platforms" class="platforms" hidden></div>
       <div id="results" class="results-body"></div>
     </section>
 
@@ -200,7 +208,7 @@
 <div id="wizard" class="modal hidden" role="dialog" aria-label="首次启动">
   <div class="wizard-card">
     <div class="modal-title">
-      <svg class="ico ico-md"><use href="#i-headset"/></svg>
+      <img class="modal-logo" src="/static/brand/logo-64.png" alt="SongLink 点歌台">
       <span>欢迎使用点歌台</span>
     </div>
     <div class="wizard-progress" id="wiz-progress">第 1 步 / 共 4 步</div>
@@ -222,7 +230,7 @@
           <svg class="ico ico-lg"><use href="#i-check"/></svg>
           <div>
             <strong>自动接管电脑正在播放的</strong>
-            <small>QQ 音乐 / 网易云 / 酷狗 / 汽水音乐 都能识别</small>
+            <small>已实测可用：酷狗音乐。QQ音乐 / 网易云 需先做校准，可能不灵</small>
           </div>
         </button>
         <button class="opt-card" data-source="local">
@@ -271,7 +279,7 @@
       <span>手机扫码连接</span>
       <button class="iconbtn sm modal-close" id="btn-qr-close"><svg class="ico ico-sm"><use href="#i-close"/></svg></button>
     </div>
-    <p class="muted">用手机浏览器扫码即可连上这台点歌台,不用记 PIN。</p>
+    <p class="muted">打开手机上的点歌台 App,选择「扫码连接」即可自动填好地址和 PIN,不用手输。</p>
     <div class="qr-stage">
       <div id="qr-img" class="qr-img"></div>
       <div class="qr-info">

@@ -8,7 +8,16 @@ RUN dotnet restore -o /app/dependencies
 
 # Copy source code and publish
 COPY src/SongLink.Host.Core/ .
-RUN dotnet publish SongLink.Host.Core.csproj -c Release -o /app/publish --no-restore
+RUN dotnet publish SongLink.Host.Core.csproj -c Release -o /app/publish --no-restore -p:EnableWindowsTargeting=true
+
+# ⚠️ 这个镜像的定位：**构建冒烟验证**，不是部署形态。
+#
+#   - EnableWindowsTargeting=true 是必须的：本工程目标框架 net8.0-windows
+#     （引用了 Windows 专用的音频/媒体会话模块），而 build stage 跑在 Linux 上，
+#     不加这个开关 SDK 会报 NETSDK1100 直接拒绝构建。
+#   - 产出的程序本身仍是 **Windows 程序**，而下面的 runtime stage 是 Linux 镜像，
+#     所以它跑不起来。真正的部署形态是 Windows 上的单文件 exe
+#     （见 scripts/publish-desktop.ps1 与 installer/）。
 
 # Runtime stage
 FROM mcr.microsoft.com/dotnet/aspnet:8.0 AS runtime

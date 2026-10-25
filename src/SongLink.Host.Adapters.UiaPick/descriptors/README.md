@@ -1,60 +1,52 @@
 # UIA AppDescriptor 模板
 
-每个音乐 App 配一个 JSON,描述「打开 App → 找搜索框 → 输入歌名 → 点第一项」的具体控件 ID/Name。
+每个音乐 App 配一个 JSON，描述"打开哪个 App → 找搜索框 → 输入歌名 → 点第一条结果"的具体控件/坐标。
 
-## 用法
+## 两种点歌方式
 
-### 1. 用 FlaUInspect 校准控件 ID
+### 1. 坐标驱动（`searchBoxRatio` / `resultItemRatio`）—— 目前实际在用的
 
-下载:https://github.com/FlaUI/FlaUInspect/releases
-- 启动目标音乐 App(QQ 音乐 / 网易云 / 酷狗 / 汽水)
-- 启动 FlaUInspect,鼠标拖到「搜索框」上 → 记下 `AutomationId`(优先)或 `Name`(回退)
-- 同样拖到「搜索结果列表第一项」上 → 记下 `AutomationId` 或 `Name Regex`
+CEF / Electron / 自绘界面的客户端（QQ音乐、酷狗、网易云）**不向 Windows UIA 暴露控件**，
+UIA 只能拿到一个空壳窗口。这时只能按坐标点。
 
-### 2. 填到 JSON
+- 坐标是**窗口内归一化坐标**（0..1），跟着窗口走，换分辨率/缩放都不受影响。
+- 配 `calibrationWidth` / `calibrationHeight`：点歌前会把客户端窗口调回这个尺寸，
+  标定才恒定成立（客户端被最大化后布局会变）。
+- `resultRowHeightRatio`：结果行间距（相对窗口高度）。点歌会**逐行试点**，
+  用系统媒体会话确认哪一行才是目标歌，避免"赌一个固定坐标"点错歌。
+- `blockWhenScreenFilling`：客户端"铺满屏幕"时拒绝点歌
+  （酷狗的歌手模式是全屏歌词页，里面没有搜索框；QQ音乐 只是被最大化，界面照常可用，所以不设）。
 
-打开 `qq-music.json` 等模板,替换:
-- `searchBoxAutomationId`: 真实 ID
-- `searchBoxName`: 真实 Name(若没 ID 用 Name)
-- `resultItemAutomationId`: 真实 ID
-- `resultItemNameRegex`: 第一项的 Name 模式,如 `".*"`(任意) 或 `"^.{0,30}$"`
+### 2. UIA 定位（`searchBoxAutomationId` / `searchBoxName`）—— 自绘客户端用不上
 
-### 3. 配置 Host 启用
+留给真正暴露控件的 App。用 FlaUInspect 抓 `AutomationId`（优先）或 `Name`（回退）填这里。
 
-`appsettings.json`:
-```json
-{
-  "adapter": "uia",
-  "adapterAssembly": "SongLink.Host.Adapters.UiaPick.dll",
-  "innerAdapter": "smtc",
-  "descriptor": "descriptors/qq-music.json",
-  "ocrAssembly": "SongLink.Host.Adapters.Ocr.dll",
-  "ocrType": "SongLink.Host.Adapters.Ocr.MediaOcrEngine"
-}
-```
+## 标定步骤（坐标驱动）
 
-### 4. 启动测试
+1. 启动目标 App，把它调到你要用的窗口尺寸（记下这个尺寸 = 标定基准）。
+2. 截**窗口**的图（不要截整屏）。
+3. 在图上量出：
+   - 搜索框输入区的中心 → 除以窗口宽/高 → `searchBoxRatio`
+   - 搜索结果第一行标题的位置 → 除以窗口宽/高 → `resultItemRatio`
+   - 相邻两行的间距 → 除以窗口高 → `resultRowHeightRatio`
+4. 把窗口宽高填进 `calibrationWidth` / `calibrationHeight`。
+5. 真机试一次：点歌后面板会显示失败原因（没点到 / 点到别的歌 / 没能切前台），
+   按提示微调比例。
 
-```bash
-dotnet run -c Release -- --adapter uia
-```
+## 怎么验证点歌有没有成功
 
-日志看到 `[factory] UIA 点歌适配器：inner=smtc descriptor=descriptors/qq-music.json` 即成功装载。
-点歌失败时看 stderr 日志 — UIA 找不到控件会回退到 OCR(需配 `ocrAssembly`)。
+点歌**不等于**"命令发出去了"。面板用**系统媒体会话**（SMTC）确认：
+目标歌名出现 **且** 状态是"在播"才算成功。切到别的歌、没版权、要 VIP、客户端没响应，
+都会如实报失败并给出具体原因。
 
-## 已知局限性
+## 已知限制
 
-- **控件 ID 随版本变化** — App 一升级 descriptor 就可能失效,需重抓
-- **CEF/Electron 套壳 App** 没暴露 UIA 节点,只能走 OCR
-- **OCR 兜底** 依赖中文字库 + 屏幕坐标,分辨率变了要改 `searchBoxPoint` / `resultRegion`
-- **汽水音乐(字节系)** 部分版本走 WebView2 内核,UIA 读不到全部控件
+- 客户端升级改了列表布局 → 需要重新标定 `resultItemRatio` / `resultRowHeightRatio`。
+- 搜"歌名 + 歌手"时，客户端可能跳到**歌手页**（第一行是歌手最热的那首，不一定是目标歌）；
+  只搜歌名时第一行是最相关结果（但可能是翻唱版）。逐行试点能覆盖一部分情况。
+- 客户端抢不到前台时，点歌会**放弃点击**（宁可不点，也不把点击落到别的应用上）。
 
-## OCR 模式(可选)
+## 旧字段（OCR 兜底）
 
-UIA 找不到控件时,自动改用屏幕截图 + OCR:
-1. 点 `searchBoxPoint` 坐标 → 焦点跳到搜索框
-2. 输入歌名 → Enter
-3. 截 `resultRegion` 区域 → OCR 找歌名 → 点中点
-4. 失败回 false,Host 走 `App-Not-Found` 错误路径
-
-需要 MediaOcrEngine(在 `SongLink.Host.Adapters.Ocr` 工程,目前是占位,需要后续接 Windows.Media.Ocr 或 PaddleOCR)。
+`searchBoxPoint` / `resultRegion` 是**屏幕物理像素坐标**，与分辨率、缩放比、窗口位置强绑定；
+换显示器或改缩放比例后必须重新校准。OCR 引擎本身目前仍是占位实现。

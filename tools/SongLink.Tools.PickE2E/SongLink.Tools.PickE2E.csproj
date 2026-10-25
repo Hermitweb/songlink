@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.17763.0</TargetPlatformMinVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyName>pick-e2e</AssemblyName>
+    <RootNamespace>PickE2E</RootNamespace>
+    <NoWarn>$(NoWarn);CA1416;NU1701</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+    <ProjectReference Include="..\..\src\SongLink.Host.Adapters.UiaPick\SongLink.Host.Adapters.UiaPick.csproj" />
+    <ProjectReference Include="..\..\src\SongLink.Host.Adapters.Smtc\SongLink.Host.Adapters.Smtc.csproj" />
+  </ItemGroup>
+</Project>

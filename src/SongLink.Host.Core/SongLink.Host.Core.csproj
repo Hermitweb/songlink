@@ -23,7 +23,9 @@
   <ItemGroup>
     <!-- KRC 解码 -->
     <PackageReference Include="Concentus" Version="2.2.2" />
-    <PackageReference Include="SharpCompress" Version="0.38.0" />
+    <!-- SharpCompress 0.38.0 已移除：源码里没有任何地方用它（KRC 走的是 zlib，不是归档格式），
+         但它带着一个 moderate 级漏洞公告（GHSA-6c8g-7p36-r338），NuGet 审计会一直报警告。
+         留着它只是白白把一个漏洞版依赖打进发布产物。 -->
 
     <!-- Excel export -->
     <PackageReference Include="EPPlus" Version="7.3.0" />

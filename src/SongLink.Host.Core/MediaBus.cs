@@ -102,8 +102,15 @@ public sealed class MediaBus : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
-        _cts.Cancel();
+        // 幂等：重复调用 DisposeAsync 是常见写法（await using + 显式释放），
+        // 第二次再 Cancel 一个已 Dispose 的 CTS 会抛 ObjectDisposedException。
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
+
+        try { _cts.Cancel(); } catch (ObjectDisposedException) { /* 已 dispose */ }
         if (_loop is not null) { try { await _loop; } catch { } }
         _cts.Dispose();
     }
+
+    /// <summary>是否已经释放过（DisposeAsync 幂等保护）。</summary>
+    private int _disposed;
 }

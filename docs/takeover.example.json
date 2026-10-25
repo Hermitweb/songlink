@@ -1,0 +1,27 @@
+{
+  "_说明": "接管模式（控制电脑上正在播放的 App）的在线搜索/点歌配置。复制到 %LOCALAPPDATA%\\SongLink\\takeover.json 才会生效。",
+
+  "_风险": "在线搜索与点歌都依赖**非官方接口或客户端私有协议**，随时可能失效，且涉及服务条款与账号风险。把 acknowledgeRisk 改成 true 代表你已知悉并自行承担。默认 false = 一个在线平台都不启用。",
+
+  "_实测状态_2026-10-19_本机Windows": [
+    "netease 网易云(深链接)：搜索 ✅ 通；点歌 ❌ 深链接实测**不切歌**（下发无报错，静默失效），已默认关闭该路径。",
+    "netease-cdp 网易云(接管)：✅ **实测完全可用** —— 走客户端自己的 CDP 控制通道，点歌后当前曲目切到目标歌**并且真的起播**。需客户端带 --remote-debugging-port=9223 启动（点歌台可代为启动；客户端已在运行需先关闭）。已知的唯一失败原因是**版权**：客户端能接受切歌但拿不到播放授权时状态停在 Stop，此时会如实报失败并提示可能没有版权。",
+    "qq     QQ音乐：搜索 ✅ 通（联想搜索，免登录）；点歌 ✅ **实测可用** —— 走「客户端界面点歌」：驱动 QQ音乐 自己的搜索框（聚焦→粘贴歌名→回车→点搜索结果），并用系统媒体会话确认真的在放这首歌。",
+    "kugou  酷狗：搜索 ✅ 通（免登录）；点歌 ⚠️ 本机客户端 20.1.32 **不支持**社区那套 workbuddy 控制桥（整个安装目录字节级搜索该协议零命中，需客户端 ≥ 20.1.40），且未做坐标标定 → 只能搜索、不能点歌。你自己验证过 kugou:// 格式的话可以填 playTemplate。"
+  ],
+
+  "_QQ音乐搜索说明": "实测 c.y.qq.com/soso/fcgi-bin/client_search_cp 已失效(HTTP 500)、u.y.qq.com/cgi-bin/musicu.fcg 无登录态返回 code 500003、网页版搜索页是纯前端渲染抓不到数据。改用 c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg（联想搜索，免登录，实测可用），再用 c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?songmid=… 补时长/专辑/会员标记。",
+
+  "_clientUiPick说明": "「客户端界面点歌」会**接管你的屏幕**：把音乐客户端窗口拉到前台、在它的搜索框里粘贴歌名并点击结果。对点歌台来说这正是想要的效果，但对正在用电脑的人来说是打扰，所以**默认关闭**，要显式打开。另外它需要针对每个客户端做过坐标标定（descriptors/*.json），没标定的平台即使打开也会如实报「未标定」，不会瞎点。",
+
+  "_点歌成功判定": "点歌成功 = 客户端**真的在放这首歌**（系统媒体会话里出现目标歌名且状态为「在播」）。实测 QQ音乐 切歌后会停在「暂停」，点歌台会补发一次「播放」指令再确认。切到了别的歌、没版权、要 VIP、客户端没响应，都会如实报失败并给出具体原因。",
+
+  "acknowledgeRisk": false,
+
+  "platforms": [
+    { "kind": "netease", "enabled": true },
+    { "kind": "netease-cdp", "enabled": true },
+    { "kind": "qq", "enabled": true, "clientUiPick": true },
+    { "kind": "kugou", "enabled": true, "clientUiPick": false, "playTemplate": null }
+  ]
+}

@@ -24,6 +24,56 @@ public sealed class AppDescriptor
     /// <summary>输入后提交的按键（默认 Enter）。</summary>
     public string SubmitKey { get; set; } = "Enter";
 
+    // —— 坐标驱动点歌（CEF/Electron 套壳的客户端 UIA 读不到控件，只能走坐标）——
+    /// <summary>
+    /// 搜索框在**窗口内**的归一化坐标 [x,y]（0..1）。
+    ///
+    /// <para>为什么用归一化而不是屏幕绝对坐标：绝对坐标换分辨率/换缩放/换窗口大小就废了。
+    /// 归一化坐标跟着窗口走，窗口在哪、多大都能对上。</para>
+    ///
+    /// <para>标定方法：截客户端窗口的图，看搜索框在图里的位置，换算成比例。
+    /// 参考 QQ音乐 1226x800 的窗口：搜索框在 (480,38) → 比例约 (0.39, 0.047)。</para>
+    /// </summary>
+    public double[]? SearchBoxRatio { get; set; }
+
+    /// <summary>
+    /// 搜索结果**第一条**在窗口内的归一化坐标 [x,y]（0..1）。
+    /// 参考 QQ音乐 1226x800：结果行标题在 (295,366) → 比例约 (0.24, 0.457)。
+    /// </summary>
+    public double[]? ResultItemRatio { get; set; }
+
+    /// <summary>
+    /// 标定基准的窗口宽度/高度（像素）。
+    ///
+    /// <para>为什么要有：坐标是**按某个窗口尺寸标定**的，客户端窗口被最大化后布局就变了，
+    /// 同一个比例会点到别的地方。点歌前先把窗口调回标定尺寸，标定才恒定成立。</para>
+    /// </summary>
+    public int? CalibrationWidth { get; set; }
+
+    /// <summary>标定基准的窗口高度（像素），见 <see cref="CalibrationWidth"/>。</summary>
+    public int? CalibrationHeight { get; set; }
+
+    /// <summary>结果行间距（归一化，相对窗口高度）。逐行试点时用。</summary>
+    public double? ResultRowHeightRatio { get; set; }
+
+    /// <summary>最多试几行（逐行试点时用）。</summary>
+    public int MaxResultRows { get; set; } = 6;
+
+    /// <summary>目标窗口的类名（同一个进程里挑对窗口用）。</summary>
+    public string? WindowClassName { get; set; }
+
+    /// <summary>该客户端在系统媒体会话里的 AppId（如 QQMusic.exe / kugou），用于播放校验。</summary>
+    public string? MediaSessionAppId { get; set; }
+
+    /// <summary>
+    /// 该客户端在"铺满屏幕"时是否要拒绝点歌。
+    ///
+    /// <para>为什么要分 App：酷狗的"歌手模式"是全屏歌词页，里面**没有搜索框**，
+    /// 必须让用户切回主界面；而 QQ音乐 只是被最大化了而已，界面照常可用。
+    /// 所以这条限制只对"全屏时确实没有搜索框"的客户端打开。</para>
+    /// </summary>
+    public bool BlockWhenScreenFilling { get; set; }
+
     // 结果项定位
     public string? ResultItemAutomationId { get; set; }
     public string? ResultItemNameRegex { get; set; }

@@ -8,6 +8,6 @@
     <RootNamespace>FixtureGen</RootNamespace>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="..\src\SongLink.Protocol\SongLink.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\SongLink.Protocol\SongLink.Protocol.csproj" />
   </ItemGroup>
 </Project>

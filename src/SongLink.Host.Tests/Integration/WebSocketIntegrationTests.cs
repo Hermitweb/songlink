@@ -1,4 +1,6 @@
 using System;
+using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
@@ -148,10 +150,24 @@ private static async Task<Frame?> ReceiveUntilAsync(
 // Fixture for managing free ports
 public sealed class HostServerFixture : IDisposable
 {
-    private const int BasePort = 52400;
-    private int _currentPortOffset = 0;
-    
-    public int FreePort => BasePort + _currentPortOffset++;
-    
+    /// <summary>
+    /// 真的去问系统要一个当前空闲的端口。
+    /// </summary>
+    /// <remarks>
+    /// 原来这里是 <c>52400 + _offset++</c> —— 名叫 FreePort 但压根没检查端口是否被占用。
+    /// 只要 52400~52499 里任何一个被别的进程（IDE、残留的 Host、并行跑的另一个测试类）占着，
+    /// 对应用例就会随机挂掉。这是长期存在的偶发失败来源，排查成本很高，根因就在这。
+    /// </remarks>
+    public int FreePort
+    {
+        get
+        {
+            var listener = new TcpListener(IPAddress.Loopback, 0);
+            listener.Start();
+            try { return ((IPEndPoint)listener.LocalEndpoint).Port; }
+            finally { listener.Stop(); }
+        }
+    }
+
     public void Dispose() { }
 }

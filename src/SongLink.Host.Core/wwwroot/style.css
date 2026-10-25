@@ -123,6 +123,13 @@ body {
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 17px; }
 .brand .ico { color: var(--accent); }
+/* 品牌图标：麦克风圆角方块 */
+.brand-logo {
+  width: 26px; height: 26px;
+  border-radius: 7px;
+  flex-shrink: 0;
+  display: block;
+}
 .topbar-spacer { flex: 1; }
 .conn-pill {
   display: inline-flex; align-items: center; gap: 6px;
@@ -192,6 +199,8 @@ input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-so
   overflow: hidden;
 }
 .now-art img { width: 100%; height: 100%; object-fit: cover; }
+/* 没有封面时的品牌插画占位（整幅画留白展示，别裁） */
+.now-art img.art-placeholder { object-fit: contain; padding: 8px; }
 .now-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
 .now-title { font-size: 22px; font-weight: 600; line-height: 1.25;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -205,7 +214,7 @@ body[data-theme="dark"] .state-pill.paused { background: #3a2a10; }
 .time { font-variant-numeric: tabular-nums; color: var(--text-3); }
 .progress-row { margin-top: auto; }
 .progress-track {
-  height: 6px; background: var(--bg-soft); border-radius: 3px; cursor: pointer; overflow: hidden;
+  height: 6px; background: var(--bg-soft); border-radius: 3px; overflow: hidden;
 }
 .progress-fill { height: 100%; background: var(--accent); width: 0; border-radius: 3px; transition: width 0.3s linear; }
 
@@ -307,6 +316,29 @@ input[type=range]::-moz-range-thumb {
 .chips .chip:hover small { color: var(--accent-text); opacity: 0.85; }
 .lib-actions { display: flex; gap: 6px; flex-wrap: wrap; }
 
+/* ---------- 在线平台状态（Host 推送，name = "platforms"） ---------- */
+.platforms { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.platforms .plat {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border: 1px solid var(--border);
+  background: var(--bg-soft); color: var(--text-2);
+  border-radius: 14px; font-size: 12px; line-height: 1.5;
+  max-width: 100%;
+}
+.platforms .plat .dot {
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--text-mute); flex: none;
+}
+/* 能点歌 = 绿；只能搜 = 橙；完全不可用 = 灰 */
+.platforms .plat.cap-play .dot { background: var(--success); }
+.platforms .plat.cap-search .dot { background: var(--warning); }
+.platforms .plat.cap-none .dot { background: var(--text-mute); }
+.platforms .plat .cap { color: var(--text-3); }
+.platforms .plat .note {
+  color: var(--text-mute); font-size: 11px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
 /* ---------- 长辈模式 ---------- */
 body.elder-mode { font-size: 18px; }
 body.elder-mode .grid-main { grid-template-columns: 1fr; max-width: 880px; }
@@ -330,7 +362,14 @@ body.elder-mode .results-body .hit .add { width: 40px; height: 40px; }
 body.elder-mode .queue-body li, body.elder-mode .history-body li { padding: 12px; font-size: 16px; }
 body.elder-mode .chips .chip { padding: 8px 16px; font-size: 15px; }
 body.elder-mode .lib-actions .btn { font-size: 15px; padding: 10px 16px; }
-body.elder-mode #lib-card, body.elder-mode .history-card { display: none; }  /* 长辈模式只看当前+搜索+队列 */
+/* 长辈模式只看 当前播放 + 大控制 + 歌词 + 点歌 + 队列。
+   注意：这里必须用 class(#lib-card 在 HTML 里不存在，元素是 class="card lib-card")；
+   并且要保留 #btn-mode —— 否则切进长辈模式后就没有退回标准模式的入口了。 */
+body.elder-mode .history-card { display: none; }
+body.elder-mode .lib-card .card-title,
+body.elder-mode #trending,
+body.elder-mode #btn-import,
+body.elder-mode #btn-qr { display: none; }
 
 /* ---------- Modal ---------- */
 .modal {
@@ -348,6 +387,8 @@ body.elder-mode #lib-card, body.elder-mode .history-card { display: none; }  /* 
   display: flex; align-items: center; gap: 8px;
   font-size: 16px; font-weight: 600; margin-bottom: 12px;
 }
+/* 品牌小图标 */
+.modal-logo { width: 24px; height: 24px; border-radius: 6px; flex-shrink: 0; display: block; }
 .modal-title .card-spacer, .modal-title .modal-close { margin-left: auto; }
 .muted { color: var(--text-3); font-size: 13px; }
 .row { display: flex; gap: 8px; margin: 10px 0; align-items: center; }
@@ -357,6 +398,13 @@ body.elder-mode #lib-card, body.elder-mode .history-card { display: none; }  /* 
   font-size: 13px; color: var(--text-2);
 }
 .result-block .ok { color: var(--success); }
+.result-block .err { color: var(--danger); }
+
+/* 搜索结果的来源标记（本地/网易云/QQ音乐/酷狗），一眼看出点歌会送到哪 */
+.results-body .hit .src {
+  display: inline-block; margin-left: 8px; padding: 1px 7px; border-radius: 10px;
+  font-size: 11px; background: var(--bg-soft); color: var(--text-3);
+}
 
 /* ---------- Wizard ---------- */
 .wizard-card { max-width: 560px; }

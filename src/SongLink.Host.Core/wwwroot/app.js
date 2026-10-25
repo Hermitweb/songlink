@@ -3,6 +3,13 @@
 (function () {
   'use strict';
 
+  // ---------- 存储键 ----------
+  const THEME_KEY = 'songlink.theme';
+  const ELDER_KEY = 'songlink.elderMode';
+  const ONBOARD_KEY = 'songlink.onboarded';
+  /** Host 配对后签发的长期 token，用于免 PIN 重连（契约 §6）。 */
+  const TOKEN_KEY = 'songlink.token';
+
   // ---------- 状态 ----------
   let ws = null;
   let seq = 0;
@@ -14,6 +21,10 @@
   let queueShuffled = false;
   let history = [];
   let pinCode = (new URLSearchParams(location.search).get('pin') || '').trim();
+  // Host 鉴权接受「PIN 或 token」二者其一（契约 §6）。PIN 每次 Host 重启都会变，
+  // 而 token 是配对后签发的长期凭据 —— 所以这里优先用 token 免手输，
+  // 这点歌台的用户是家里长辈，让他们每次打开都要重敲 6 位数字是不可接受的。
+  let authToken = (localStorage.getItem(TOKEN_KEY) || '').trim();
   let userName = localStorage.getItem('songlink.user') || '';
   let reconnectTimer = null;
   let reconnectDelay = 0;
@@ -21,19 +32,17 @@
   let preMuteVolume = 1.0;
 
   // 主题 / 模式
-  const THEME_KEY = 'songlink.theme';
-  const ELDER_KEY = 'songlink.elderMode';
-  const ONBOARD_KEY = 'songlink.onboarded';
   let theme = localStorage.getItem(THEME_KEY) || 'light';
   document.body.setAttribute('data-theme', theme);
-  let elderMode = localStorage.getItem(ELDER_KEY) === 'on';
+  // 适老化是这个产品的主定位,所以默认开启;用户显式关掉才记为 off。
+  let elderMode = localStorage.getItem(ELDER_KEY) !== 'off';
 
   // ---------- 工具 ----------
   const $ = id => document.getElementById(id);
   const fmtTime = s => { const m = Math.floor(s / 60), sec = Math.floor(s % 60); return `${m}:${sec.toString().padStart(2, '0')}`; };
   const nextSeq = () => ++seq;
   const uuid = () => 'web-' + Math.random().toString(36).slice(2, 10);
-  const esc = s => (s || '').replace(/[<>&"']/g, c => ({ '<': '<', '>': '>', '&': '&', '"': '"', "'": '&#39;' }[c]));
+  const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const who = () => (userName || '').trim() || '匿名';
 
   // SVG icon helper — inline `<svg><use href="#i-foo"/></svg>`
@@ -78,7 +87,8 @@
     if (cur.artRef) {
       wrap.innerHTML = `<img alt="" src="/art/${encodeURIComponent(cur.artRef)}" onerror="this.remove()">`;
     } else {
-      wrap.innerHTML = icon('headset', 'ico-xl ico-mute');
+      // 没封面时放品牌插画，不再是通用耳机占位符
+      wrap.innerHTML = `<img class="art-placeholder" src="/static/brand/illustration-512.png" alt="">`;
     }
 
     // 音量
@@ -141,13 +151,45 @@
   function renderResults(results) {
     if (!results.length) { $('results').innerHTML = '<div class="empty">无结果</div>'; return; }
     $('results').innerHTML = results.map(r =>
-      `<div class="hit" data-t="${esc(r.title || '')}" data-a="${esc(r.artist || '')}">
+      `<div class="hit" data-t="${esc(r.title || '')}" data-a="${esc(r.artist || '')}"
+           data-s="${esc(r.source || '')}" data-i="${esc(r.sourceId || '')}">
          <div class="info">
            <span class="t">${esc(r.title)}</span><span class="a">${esc(r.artist || '')}</span>
+           ${r.source && r.source !== 'local' ? `<span class="src">${esc(SOURCE_LABEL[r.source] || r.source)}</span>` : ''}
          </div>
          <button class="add" data-act="add" title="加入队列">${icon('plus', 'ico-sm')}</button>
          <button class="add" data-act="pick" title="立即播放">${icon('play', 'ico-sm')}</button>
        </div>`).join('');
+  }
+
+  /** 在线来源的展示名，面板与手机端保持一致。 */
+  const SOURCE_LABEL = { netease: '网易云', qq: 'QQ音乐', kugou: '酷狗' };
+
+  /** 平台能力的三档说法，与 Host 侧 PlatformCapability 枚举同名。 */
+  const CAP_LABEL = { SearchAndPlay: '可点歌', SearchOnly: '只能搜', None: '不可用' };
+  const CAP_CLASS = { SearchAndPlay: 'cap-play', SearchOnly: 'cap-search', None: 'cap-none' };
+
+  /**
+   * 渲染"在线平台"能力标签（Host 推 name = "platforms" 事件）。
+   *
+   * 为什么要显示这个：三家的点歌通道差别很大 —— 有的能真的点歌，有的只能搜。
+   * 不显示的话，用户搜到歌就点，点了没响，却不知道是"没版权/要会员"
+   * 还是"这台机器压根没装那个客户端"。这里把 Host 说的**真实能力**直接摆出来。
+   */
+  function renderPlatforms(list) {
+    const box = $('platforms');
+    if (!list || !list.length) { box.hidden = true; box.innerHTML = ''; return; }
+    box.hidden = false;
+    box.innerHTML = list.map(p => {
+      const cap = p.capability || 'None';
+      const cls = CAP_CLASS[cap] || 'cap-none';
+      const label = CAP_LABEL[cap] || cap;
+      const name = p.name || SOURCE_LABEL[p.kind] || p.kind || '';
+      const note = p.note ? `<span class="note" title="${esc(p.note)}">${esc(p.note)}</span>` : '';
+      return `<span class="plat ${cls}">` +
+             `<span class="dot"></span>${esc(name)}` +
+             `<span class="cap">${esc(label)}</span>${note}</span>`;
+    }).join('');
   }
 
   function renderHistory() {
@@ -198,16 +240,31 @@
   }
 
   // ---------- 连接 ----------
-  function connect(pin) {
-    pinCode = (pin || '').trim();
-    if (!pinCode) { toast('请输入 PIN', 'error'); return; }
+  /**
+   * 建立连接。参数省略表示「沿用当前已知的凭据」——
+   * 这样重连循环只管 connect() 即可，不必每次重复传 token。
+   */
+  function connect(pin, token) {
+    if (pin !== undefined) pinCode = (pin || '').trim();
+    if (token !== undefined) authToken = (token || '').trim();
+    if (!pinCode && !authToken) {
+      toast('请输入 PIN', 'error');
+      $('pin-wrap').hidden = false;
+      return;
+    }
     if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     setConn('connecting');
     const proto = location.protocol === 'https:' ? 'wss' : 'ws';
     ws = new WebSocket(`${proto}://${location.host}/`);
     ws.onopen = () => {
       reconnectDelay = 0;
-      send({ type: 'hello', id: uuid(), role: 'remote', device: 'web-panel', os: navigator.platform, caps: ['cmd', 'state', 'lyric', 'queue'], pin: pinCode });
+      const hello = {
+        type: 'hello', id: uuid(), role: 'remote', device: 'web-panel',
+        os: navigator.platform, caps: ['cmd', 'state', 'lyric', 'queue']
+      };
+      // token 优先：Host 端 ValidatePin || ValidateToken，两者有其一即可
+      if (authToken) hello.token = authToken; else hello.pin = pinCode;
+      send(hello);
     };
     ws.onmessage = ev => { try { handle(JSON.parse(ev.data)); } catch (e) { console.warn('bad frame', e); } };
     ws.onclose = () => { setConn('off'); scheduleReconnect(); };
@@ -215,12 +272,12 @@
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer || !pinCode) return;
+    if (reconnectTimer || (!pinCode && !authToken)) return;
     reconnectDelay = reconnectDelay === 0 ? 3 : Math.min(reconnectDelay * 1.6 + 1, 15);
     reconnectTimer = setTimeout(() => {
       reconnectTimer = null;
       setConn('connecting');
-      connect(pinCode);
+      connect();
     }, reconnectDelay * 1000);
   }
 
@@ -230,10 +287,23 @@
         if (f.ok) {
           setConn('on');
           $('pin-wrap').hidden = true;
+          // 存下长期 token，下次打开面板就能免 PIN 直连（契约 §6）
+          if (f.token) {
+            authToken = f.token;
+            try { localStorage.setItem(TOKEN_KEY, f.token); } catch (e) { /* 隐私模式等，忽略 */ }
+          }
           send({ type: 'cmd', id: uuid(), action: 'trending', args: { limit: 24 } });
           send({ type: 'cmd', id: uuid(), action: 'history.list', args: { limit: 12 } });
           if (cur.title && cur.artist) requestLyric();
           showWizardIfNeeded();
+        } else if (authToken && !pinCode) {
+          // token 失效 —— Host 重启后 AuthManager 的 token 表是空的，旧 token 就废了。
+          // 这时不该反复拿废 token 重试，直接丢掉并请用户输一次 PIN。
+          authToken = '';
+          try { localStorage.removeItem(TOKEN_KEY); } catch (e) { /* 忽略 */ }
+          setConn('off');
+          $('pin-wrap').hidden = false;
+          toast('点歌台已重启，请重新输入一次 PIN', 'error');
         } else {
           setConn('off');
           toast('鉴权失败: ' + (f.code || 'AUTH_FAILED'), 'error');
@@ -274,6 +344,9 @@
         if (f.name === 'import-result') {
           const r = (f.queue && f.queue[0]) || {};
           showImportResult(r);
+        }
+        if (f.name === 'platforms') {
+          renderPlatforms(f.platforms || []);
         }
         renderNow();
         break;
@@ -337,9 +410,13 @@
 
   function showImportResult(r) {
     const el = $('import-result');
-    const cls = r.failed > 0 ? 'ok' : 'ok';
-    el.innerHTML = `<span class="${cls}">导入完成</span> — 扫到 ${r.total} 个,成功 ${r.imported} 首,失败 ${r.failed}`;
-    toast('导入完成 — ' + r.imported + ' 首', 'ok');
+    const total = r.total || 0, imported = r.imported || 0, failed = r.failed || 0;
+    const partial = failed > 0;
+    const cls = partial ? 'err' : 'ok';
+    const label = total === 0 ? '没找到可导入的音频文件'
+      : partial ? '导入完成(部分失败)' : '导入完成';
+    el.innerHTML = `<span class="${cls}">${label}</span> — 扫到 ${total} 个,成功 ${imported} 首,失败 ${failed}`;
+    toast(total === 0 ? label : `${label} — 成功 ${imported} 首`, partial ? 'error' : 'ok');
   }
 
   // ---------- QR 弹窗(服务端 QRCoder 生成)----------
@@ -409,7 +486,8 @@
   }
 
   // ---------- 事件绑定 ----------
-  $('btn-connect').onclick = () => connect($('pin').value);
+  // 用户手输 PIN 时把 token 清空，保证走的是新 PIN 而不是可能已失效的旧 token
+  $('btn-connect').onclick = () => connect($('pin').value, '');
   $('btn-prev').onclick = () => send({ type: 'cmd', id: uuid(), action: 'prev' });
   $('btn-play').onclick = () => send({ type: 'cmd', id: uuid(), action: cur.status === 'playing' ? 'pause' : 'play' });
   $('btn-next').onclick = () => send({ type: 'cmd', id: uuid(), action: 'next' });
@@ -463,15 +541,8 @@
     }
   };
 
-  // 进度条点击 seek
-  $('progress-track').addEventListener('click', e => {
-    if (!cur.dur) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const pct = (e.clientX - rect.left) / rect.width;
-    const seekTo = Math.max(0, Math.min(1, pct)) * cur.dur;
-    // 没有 seek cmd,先给个 toast 提示
-    toast('暂不支持跳转进度', 'error');
-  });
+  // 进度条当前只做展示。Host 还没有 seek 指令,所以不做点击交互,
+  // 避免出现"看起来能点、点了报错"的假控件;等 seek 落地再把 handler 加回来。
 
   // 队列操作委托
   $('queue-list').addEventListener('click', e => {
@@ -519,8 +590,11 @@
     const hit = e.target.closest('.hit');
     if (!hit) return;
     const t = hit.dataset.t, a = hit.dataset.a;
+    // 把来源与平台歌曲 ID 一起带上：Host 侧据此把歌送到正确的播放入口，
+    // 不用再按歌名二次匹配（那会导致放错歌）。
+    const src = hit.dataset.s || '', sid = hit.dataset.i || '';
     if (btn.dataset.act === 'add') send({ type: 'cmd', id: uuid(), action: 'queue.add', args: { title: t, artist: a, by: who() } });
-    else if (btn.dataset.act === 'pick') send({ type: 'cmd', id: uuid(), action: 'pick', args: { title: t, artist: a } });
+    else if (btn.dataset.act === 'pick') send({ type: 'cmd', id: uuid(), action: 'pick', args: { title: t, artist: a, source: src, sourceId: sid } });
   });
 
   // 历史再听
@@ -548,7 +622,9 @@
     preMuteVolume = savedVol / 100; cur.volume = preMuteVolume;
     if (savedVol === 0) volumeMuted = true;
   }
-  if (pinCode) connect(pinCode);
+  // 启动即尝试连接：URL 里的 PIN / 上次记住的 token 任一可用即可，都没有才问用户要
+  if (pinCode) connect(pinCode, '');
+  else if (authToken) connect();
   else $('pin-wrap').hidden = false;
   setConn('off');
   renderNow(); renderQueue(); renderLyrics(); renderHistory();

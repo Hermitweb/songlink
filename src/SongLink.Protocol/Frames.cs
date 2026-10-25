@@ -58,6 +58,21 @@ public sealed class SearchResultItem
     [JsonPropertyName("artist")] public string Artist { get; set; } = "";
     [JsonPropertyName("album")] public string? Album { get; set; }
     [JsonPropertyName("dur")] public double? Dur { get; set; }
+
+    /// <summary>
+    /// 这条结果来自哪个搜索源（"local" / "netease" / "qq" / "kugou"）。
+    /// 点歌时据此路由到对应的播放策略 —— 本地歌交给本地播放器，
+    /// 各平台的结果交给各自的深链接/命令行入口。
+    /// </summary>
+    /// <remarks>
+    /// 刻意做成可空：宿主统一按 WhenWritingNull 序列化，可空字段在没赋值时
+    /// **不会出现在 JSON 里**，这样老客户端/老 fixture 的字节完全不变。
+    /// 若用非空 string + 默认 ""，空值也会被写出，会破坏跨端字节一致性契约。
+    /// </remarks>
+    [JsonPropertyName("source")] public string? Source { get; set; }
+
+    /// <summary>该平台内部的歌曲 ID（网易云 id / QQ songid / 酷狗 hash）。</summary>
+    [JsonPropertyName("sourceId")] public string? SourceId { get; set; }
 }
 
 public sealed class SearchResults : Frame
@@ -124,6 +139,16 @@ public sealed class EventFrame : Frame
     [JsonPropertyName("name")] public string Name { get; set; } = "";
     [JsonPropertyName("mode")] public string? Mode { get; set; }
     [JsonPropertyName("queue")] public JsonArray? Queue { get; set; }
+
+    /// <summary>
+    /// 在线平台状态（<c>name = "platforms"</c> 时才有）。
+    ///
+    /// 每项形如 <c>{ "kind":"netease", "name":"网易云", "capability":"SearchAndPlay", "note":"..." }</c>。
+    ///
+    /// <para>为什么单独开一个字段而不是复用 <see cref="Queue"/>：那个字段语义上就是"队列"，
+    /// 借用它装别的东西会让读代码的人以为那是队列。平台状态要单独走。</para>
+    /// </summary>
+    [JsonPropertyName("platforms")] public JsonArray? Platforms { get; set; }
 }
 
 public sealed class Art : Frame

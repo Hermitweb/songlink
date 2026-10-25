@@ -280,6 +280,40 @@ GET /art/img:sunny-day-0 HTTP/1.1
 Host: localhost:51999
 ```
 
+### **封面上传（HTTP，非 WebSocket 帧）**
+
+手机正在播放的封面要显示到电脑面板上时，手机把图片直接 POST 给主机存进 art 目录，
+面板再用上面的 `GET /art/{ref}` 拉下来。
+
+```http
+POST /art?name={ref} HTTP/1.1
+Host: localhost:51999
+Content-Type: image/png        # image/png | image/jpeg | image/webp
+
+<原始图片字节>                  # 不是 multipart，也不是 base64
+```
+
+| 参数 / 情况 | 结果 | 说明 |
+|------|--------|------|
+| 成功 | `200` | 响应体纯文本 `ok` |
+| `name` 缺失 / 为空 | `400` | ref 由客户端生成，服务端只校验 |
+| `name` 含 `..` 或非法字符 | `400` | `ArtStore.IsSafeRef`：只允许 `[A-Za-z0-9._-]` |
+| `name` 扩展名不在白名单 | `400` | 仅 `.png` / `.jpg` / `.jpeg` / `.webp`（`ArtStore.Exts`） |
+| `Content-Type` 不支持 | `400` | 不在上述三种之内就不读 body |
+| 请求体 > 2 MB | `413` | 封面用不着更大 |
+| 写盘失败 | `500` | 不返回异常细节 |
+
+```bash
+curl -X POST "http://localhost:51999/art?name=sunny-day-0.png" \
+     -H "Content-Type: image/png" \
+     --data-binary @cover.png
+# → ok
+```
+
+⚠ **该端点不鉴权**（与既有 `GET /art/{ref}` 保持一致）：同网段任意设备都能往 art 目录写图。
+当前风险可控是因为 ref 字符集受限、写不进可执行文件、且有 2 MB 上限；
+一旦 Host 暴露到公网，必须补上 token 鉴权与配额/清理策略。
+
 ---
 
 ## 🔐 安全机制

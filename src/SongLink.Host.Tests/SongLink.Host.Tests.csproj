@@ -24,6 +24,8 @@
     <ProjectReference Include="..\SongLink.Host.Core\Benchmarks\SongLink.Host.Core.Benchmarks.csproj" />
     <ProjectReference Include="..\SongLink.Host.AudioStream\SongLink.Host.AudioStream.csproj" />
     <ProjectReference Include="..\SongLink.Host.Adapters.LocalSource\SongLink.Host.Adapters.LocalSource.csproj" />
+    <!-- 坐标驱动的客户端内点歌（QQ音乐/酷狗）：要能单测它的坐标换算与失败分支 -->
+    <ProjectReference Include="..\SongLink.Host.Adapters.UiaPick\SongLink.Host.Adapters.UiaPick.csproj" />
   </ItemGroup>
 
   <ItemGroup>
