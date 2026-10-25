@@ -1,9 +1,6 @@
 package songlink.remote.ui
 
-import android.graphics.BitmapFactory
-import android.net.Uri
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -12,20 +9,18 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
-import com.google.zxing.BarcodeFormat
 import com.google.zxing.BinaryBitmap
 import com.google.zxing.LuminanceSource
 import com.google.zxing.common.HybridBinarizer
 import com.google.zxing.qrcode.QRCodeReader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import com.journeyapps.barcodescanner.ScanContract
+import com.journeyapps.barcodescanner.ScanIntentResult
+import com.journeyapps.barcodescanner.ScanOptions
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -33,53 +28,55 @@ import kotlinx.serialization.json.jsonPrimitive
 /**
  * QR Code 扫描页面 - 自动填充连接信息
  *
- * 注意（AI 生成占位）：摄像头预览尚未接入 CameraX，
- * 当前页面只负责权限申请 + 展示 UI；真正解码走 [decodeQRCode] 的 ZXing 路径。
+ * 摄像头预览由 zxing-android-embedded 自带的 CaptureActivity 提供（库内已含 CameraX），
+ * 本页面只负责：相机权限 -> 拉起扫描 Activity -> 用 [parseQrData] 解析出 host / pin。
  */
 @OptIn(ExperimentalPermissionsApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun QrCodeScanPage(
     modifier: Modifier = Modifier,
     onScanSuccess: (String, String) -> Unit, // hostUrl, pin
+    onManualInput: () -> Unit, // 手动输入连接信息（跳配对页）
     navController: NavController
 ) {
-    val context = LocalContext.current
-
     // Camera permission
     val cameraPermission = rememberPermissionState(android.Manifest.permission.CAMERA)
 
-    var capturedUri by remember { mutableStateOf<Uri?>(null) }
-    var scanning by remember { mutableStateOf(true) }
-    var decodedData by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
+    // 只自动拉起一次；用户取消后可以手动点"重新扫描"
+    var autoLaunched by remember { mutableStateOf(false) }
 
-    LaunchedEffect(capturedUri) {
-        capturedUri?.let { uri ->
-            try {
-                val bitmap = withContext(Dispatchers.IO) {
-                    context.contentResolver.openInputStream(uri).use { BitmapFactory.decodeStream(it) }
-                }
+    // 扫描配置：只要二维码，竖屏取景框，关闭提示音
+    val scanOptions = remember {
+        ScanOptions().apply {
+            setDesiredBarcodeFormats(ScanOptions.QR_CODE)
+            setPrompt("请将二维码对准取景框")
+            setBeepEnabled(false)
+            setOrientationLocked(true)
+            setCameraId(0) // 0 = 后置摄像头
+        }
+    }
 
-                // Decode QR code
-                val result = decodeQRCode(bitmap)
+    val scanLauncher = rememberLauncherForActivityResult(ScanContract()) { result: ScanIntentResult ->
+        val contents = result.contents
+        if (contents.isNullOrEmpty()) {
+            // 用户按了返回键取消，不算错误
+            return@rememberLauncherForActivityResult
+        }
+        val qrData = parseQrData(contents)
+        if (qrData != null) {
+            error = null
+            onScanSuccess(qrData.host, qrData.pin)
+        } else {
+            error = "二维码内容不是有效的连接信息"
+        }
+    }
 
-                if (result != null && result.barcodeFormat == BarcodeFormat.QR_CODE) {
-                    decodedData = result.text
-
-                    // Parse JSON data
-                    val qrData = parseQrData(result.text)
-                    if (qrData != null) {
-                        onScanSuccess(qrData.host, qrData.pin)
-                        scanning = false
-                    } else {
-                        error = "无效的 QR 数据格式"
-                    }
-                } else {
-                    error = "未识别为有效 QR Code"
-                }
-            } catch (e: Exception) {
-                error = "扫码失败：${e.message}"
-            }
+    // 权限授予后自动开始扫描
+    LaunchedEffect(cameraPermission.status.isGranted) {
+        if (cameraPermission.status.isGranted && !autoLaunched) {
+            autoLaunched = true
+            scanLauncher.launch(scanOptions)
         }
     }
 
@@ -142,42 +139,42 @@ fun QrCodeScanPage(
                 }
             }
         } else {
-            Box(
+            // 已授权：真实预览由 CaptureActivity 提供，这里只做取景框示意与状态
+            Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .weight(1f)
-                    .aspectRatio(1f)
-                    .border(2.dp, MaterialTheme.colorScheme.primary, MaterialTheme.shapes.medium)
+                    .aspectRatio(1f),
+                colors = CardDefaults.cardColors(MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                Surface(
-                    modifier = Modifier.matchParentSize(),
-                    color = MaterialTheme.colorScheme.onSurface
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center
                 ) {
-                    Text(
-                        "正在初始化摄像头...",
-                        modifier = Modifier.padding(16.dp)
+                    Icon(
+                        Icons.Default.QrCode,
+                        contentDescription = null,
+                        modifier = Modifier.size(120.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-
-                // Overlay for QR scan area (简化版)
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.3f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(250.dp)
-                            .background(Color.Transparent)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text(
+                        "点击下方按钮打开取景器",
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Button(onClick = { scanLauncher.launch(scanOptions) }) {
+                Text("开始扫码")
+            }
+
             // Error display
             if (error != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(MaterialTheme.colorScheme.errorContainer)
@@ -193,7 +190,7 @@ fun QrCodeScanPage(
 
                 Button(onClick = {
                     error = null
-                    capturedUri = null
+                    scanLauncher.launch(scanOptions)
                 }) {
                     Text("重新扫描")
                 }
@@ -202,8 +199,7 @@ fun QrCodeScanPage(
             Spacer(modifier = Modifier.weight(1f))
 
             Button(
-                onClick = { /* 手动输入逻辑 */ },
-                enabled = false
+                onClick = onManualInput
             ) {
                 Text("或手动输入连接信息")
             }
@@ -245,7 +241,7 @@ fun parseQrData(json: String): QrData? {
 
 /**
  * 用 ZXing core 解码 Bitmap 中的二维码。
- * 返回 null 表示解码失败（AI 生成：替换原文件中不存在的 BitmapLuminanceSource/BinaryBitmap 调用）。
+ * 返回 null 表示解码失败。
  */
 fun decodeQRCode(bitmap: android.graphics.Bitmap?): com.google.zxing.Result? {
     if (bitmap == null) return null

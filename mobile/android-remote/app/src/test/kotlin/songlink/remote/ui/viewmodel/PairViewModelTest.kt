@@ -2,8 +2,10 @@ package songlink.remote.ui.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestCoroutineScheduler
@@ -21,7 +23,9 @@ import org.junit.Before
 import org.junit.Test
 import songlink.remote.Fixtures
 import songlink.remote.data.model.AuthResult
+import songlink.remote.data.repo.InMemoryCredentialStore
 import songlink.remote.data.repo.NowPlayingRepo
+import songlink.remote.data.repo.SessionManager
 import songlink.remote.data.transport.WsTransport
 import songlink.remote.util.Constants
 
@@ -40,6 +44,8 @@ class PairViewModelTest {
     private lateinit var savedState: SavedStateHandle
     private lateinit var fakeTransport: FakeWsTransport
     private lateinit var repo: NowPlayingRepo
+    private lateinit var session: SessionManager
+    private lateinit var creds: InMemoryCredentialStore
     private val viewModelStore = ViewModelStore()
 
     /**
@@ -56,6 +62,14 @@ class PairViewModelTest {
         savedState = SavedStateHandle()
         fakeTransport = FakeWsTransport()
         repo = NowPlayingRepo()
+        creds = InMemoryCredentialStore()
+        // 传入与测试同一个调度器，帧收集才能在断言前同步跑完
+        session = SessionManager(
+            ws = fakeTransport,
+            repo = repo,
+            creds = creds,
+            scope = CoroutineScope(SupervisorJob() + testDispatcher)
+        )
     }
 
     @After
@@ -241,7 +255,11 @@ class PairViewModelTest {
     }
 
     private fun createViewModel(): PairViewModel {
-        val vm = PairViewModel(savedStateHandle = savedState, wsTransport = fakeTransport, nowPlayingRepo = repo)
+        val vm = PairViewModel(
+            savedStateHandle = savedState,
+            wsTransport = fakeTransport,
+            session = session
+        )
         viewModelStore.put("pair", vm)
         return vm
     }

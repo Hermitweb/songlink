@@ -118,6 +118,17 @@ data class SearchResultItem(
     val album: String? = null,
     /** 时长（秒）。 */
     val dur: Double? = null,
+    /**
+     * 结果来自哪个搜索源："local" / "netease" / "qq" / "kugou"。
+     * 与 C# 侧 `SearchResultItem.Source` 对应 —— 面板据此显示来源，
+     * 点歌时 Host 侧也据此路由到对应播放策略。
+     *
+     * 刻意可空：宿主按"null 字段不写出"序列化，没赋值时 JSON 里**不会**出现这个键，
+     * 保证与 C# 端产出的字节完全一致（非空默认值会把空串也写出去，破坏契约）。
+     */
+    val source: String? = null,
+    /** 该平台内部的歌曲 ID（网易云 id / QQ songid / 酷狗 hash）。 */
+    val sourceId: String? = null,
 )
 
 /** `searchResults`：搜索结果，Host→Remote（契约 §3.2b）。 */

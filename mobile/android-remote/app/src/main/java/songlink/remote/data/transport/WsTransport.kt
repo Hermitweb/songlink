@@ -64,10 +64,17 @@ open class WsTransport(
     private val _authResult = MutableStateFlow<AuthResult?>(null)
     val authResult: StateFlow<AuthResult?> = _authResult.asStateFlow()
 
-    /** socket 已建立且鉴权通过。鉴权前 Host 不会推任何广播，故此时才算「连上」。 */
-    @Volatile
-    var isConnected: Boolean = false
-        private set
+    /**
+     * socket 已建立且鉴权通过。鉴权前 Host 不会推任何广播，故此时才算「连上」。
+     *
+     * 以 StateFlow 暴露：WiFi 漂移 / 电脑休眠这类"静默断链"必须让 UI 立刻看到，
+     * 否则点歌台会一直显示"已连接"，而用户发出的每条指令都石沉大海。
+     */
+    private val _connected = MutableStateFlow(false)
+    val connected: StateFlow<Boolean> = _connected.asStateFlow()
+
+    /** [connected] 的同步读取，供命令下发等非 Compose 场景使用。 */
+    val isConnected: Boolean get() = _connected.value
 
     /** 已见最大 seq，重连时填进 `hello.lastSeq`（契约 §7）。 */
     @Volatile
@@ -86,6 +93,21 @@ open class WsTransport(
     @Volatile
     private var lastUrl: String? = null
 
+    /**
+     * 当前连接的 Host 基址，形如 `http://192.168.1.5:51999`（ws/wss 已转成 http/https）。
+     *
+     * 封面图要经 `GET /art/{ref}` 拉取，那是 HTTP 端点而不是 WebSocket 端点，
+     * 所以这里从 [lastUrl] 派生而不是直接复用。未连接时返回 null。
+     */
+    val hostBaseUrl: String?
+        get() = lastUrl?.trimEnd('/')?.let {
+            when {
+                it.startsWith("wss://") -> "https://" + it.removePrefix("wss://")
+                it.startsWith("ws://") -> "http://" + it.removePrefix("ws://")
+                else -> null
+            }
+        }
+
     @Volatile
     private var lastPin: String? = null
 
@@ -93,6 +115,9 @@ open class WsTransport(
     private var reconnecting: Boolean = false
 
     private var reconnectJob: Job? = null
+
+    /** 应用层心跳协程；断开时取消。 */
+    private var heartbeatJob: Job? = null
     private val idSeq = AtomicLong(0)
     private val seqSeq = AtomicLong(0)
 
@@ -174,7 +199,8 @@ open class WsTransport(
             val result = withTimeout(authTimeoutMs) { auth.await() }
             _authResult.value = result
             if (result.ok) {
-                isConnected = true
+                _connected.value = true
+                startHeartbeat()
                 result.token?.let { token = it }
                 result.hostKey?.let { hostKey = it }
                 Result.success(result)
@@ -211,6 +237,22 @@ open class WsTransport(
     /** 鉴权通过后拿到的长期令牌，重连时用。 */
     fun currentToken(): String? = token
 
+    /**
+     * 进程重启后恢复上次配对成功的凭据。
+     *
+     * token 只存在内存里，进程一死就没了，导致用户每次打开 App 都要重输 PIN。
+     * 调用本方法把落盘的 token 灌回来，随后 `connect(url, "")` 发出的 hello 帧就会带上它
+     * （见 [connectOnce] 里的 `token = token`），从而实现**免 PIN 重连**。
+     * PIN 传空串即可 —— `pin.ifEmpty { null }` 会让 null 的 pin 字段不出现在帧里。
+     */
+    fun restoreCredentials(url: String, token: String) {
+        lastUrl = url
+        if (token.isNotBlank()) this.token = token
+    }
+
+    /** 当前连接的 WebSocket 地址（未连接为 null），供上层持久化使用。 */
+    val currentUrl: String? get() = lastUrl
+
     /** 签名模式下 Host 出站广播帧的验签密钥。 */
     fun currentHostKey(): String? = hostKey
 
@@ -228,15 +270,47 @@ open class WsTransport(
     }
 
     private fun closeSocket() {
-        isConnected = false
+        stopHeartbeat()
+        _connected.value = false
         socket?.close(NORMAL_CLOSURE, "bye")
         socket = null
     }
 
     private fun onDisconnected() {
-        isConnected = false
+        stopHeartbeat()
+        _connected.value = false
         socket = null
         scheduleReconnect()
+    }
+
+    /**
+     * 应用层心跳（契约 §1：3s 一次）。
+     *
+     * 和 OkHttp 的 `pingInterval` 分工：
+     * - OkHttp 发的是**协议层 WebSocket PING**，用来判定 TCP 链路是否已死（应对 WiFi 漂移 / 电脑休眠）；
+     * - 这里发的是**应用层 `ping` 帧**，用来保活 NAT / 防火墙上的 UDP 映射，并让 Host 侧看到我们还活着。
+     *
+     * `ping()` 返回 false 说明 socket 已经没了，此时立刻走 [onDisconnected] 触发退避重连，
+     * 而不是继续对着一个死 socket 空转。
+     */
+    private fun startHeartbeat() {
+        if (!autoReconnect) return
+        heartbeatJob?.cancel()
+        heartbeatJob = scope.launch {
+            while (isActive && _connected.value) {
+                delay(HEARTBEAT_INTERVAL_MS)
+                if (!_connected.value) break
+                if (!ping()) {
+                    onDisconnected()
+                    break
+                }
+            }
+        }
+    }
+
+    private fun stopHeartbeat() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
     }
 
     /** 指数退避：base * 2^(n-1)，上限 [reconnectMaxDelayMs]（1-based attempt）。 */
@@ -276,11 +350,25 @@ open class WsTransport(
     companion object {
         private const val NORMAL_CLOSURE = 1000
 
+        /** 应用层心跳间隔（契约 §1：ping 每 3s 一次）。 */
+        private const val HEARTBEAT_INTERVAL_MS = 3_000L
+
+        /**
+         * OkHttp 协议层 PING 间隔。
+         *
+         * 没有它，TCP 静默断开（手机离开 WiFi 覆盖、电脑休眠、路由器换信道）不会被察觉——
+         * socket 在两端看来都还"开着"，但消息已经发不出去了。OkHttp 发 PING 后若下一个间隔
+         * 内收不到 PONG，会主动关闭 socket，从而触发本类的退避重连。
+         * 20s 是个平衡点：比 TCP 自身的失效判定快，又不会给路由器添乱。
+         */
+        private const val WS_PING_INTERVAL_SEC = 20L
+
         private val sharedHttpClient: OkHttpClient by lazy {
             OkHttpClient.Builder()
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(0, TimeUnit.MILLISECONDS) // 长连接不读超时
                 .retryOnConnectionFailure(true)
+                .pingInterval(WS_PING_INTERVAL_SEC, TimeUnit.SECONDS)
                 .build()
         }
 

@@ -9,25 +9,30 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import songlink.remote.data.model.AuthResult
-import songlink.remote.data.repo.NowPlayingRepo
+import songlink.remote.data.repo.SessionManager
 import songlink.remote.data.transport.WsTransport
 import songlink.remote.util.Constants
 import javax.inject.Inject
 
 /**
- * 配对 ViewModel：输入 Host 地址 + 6 位 PIN，完成握手并把播放状态接进 [NowPlayingRepo]。
+ * 配对 ViewModel：输入 Host 地址 + 6 位 PIN，完成握手并把播放状态接进 [SessionManager]。
  *
  * 状态来源为 [SavedStateHandle]（进程重建后仍能恢复已填内容），写入时会同步回写，
  * 因此 UI 只管调 [onServerUrlChange] / [onPinChange]，不用自己保存。
  *
- * [WsTransport] / [NowPlayingRepo] 是具体类而非接口，便于直接用 Hilt 单例；
+ * **与 [SessionManager] 的分工**：本类只管「配对表单」——地址/PIN 校验、发起握手、保存凭据；
+ * 握手结果会同步给 [SessionManager.onConnectResult]，由后者统一维护全局会话状态
+ * （连接态、队列、命令下发）。帧的收集也已全部收敛到 [SessionManager]，
+ * 本类不再重复订阅 `wsTransport.frames`。
+ *
+ * [WsTransport] / [SessionManager] 是具体类而非接口，便于直接用 Hilt 单例；
  * 测试则传匿名子类或纯内存实例，不依赖设备。
  */
 @HiltViewModel
 class PairViewModel @Inject constructor(
     private val savedStateHandle: SavedStateHandle,
     private val wsTransport: WsTransport,
-    private val nowPlayingRepo: NowPlayingRepo,
+    private val session: SessionManager,
 ) : ViewModel() {
 
     /** 配对 / 连接状态机。 */
@@ -71,10 +76,8 @@ class PairViewModel @Inject constructor(
         get() = !isValidPin(_pin.value)
 
     init {
-        // 把传输层收到的帧喂给播放状态仓库（state / lyric / searchResults / art）
-        viewModelScope.launch {
-            wsTransport.frames.collect { frame -> nowPlayingRepo.onFrame(frame) }
-        }
+        // 帧收集已移交 SessionManager（App 级单例），此处不再重复订阅，
+        // 否则离开配对页后会残留一个仍在写 NowPlayingRepo 的僵尸收集协程。
     }
 
     fun onServerUrlChange(value: String) {
@@ -91,18 +94,25 @@ class PairViewModel @Inject constructor(
     fun connect() {
         if (hasInvalidUrl) {
             _connectionState.value = ConnectionState.Failed(INVALID_URL_REASON)
+            session.onConnectResult(Result.failure(IllegalArgumentException(INVALID_URL_REASON)))
             return
         }
         if (hasPinError) {
             _connectionState.value = ConnectionState.Failed(INVALID_PIN_REASON)
+            session.onConnectResult(Result.failure(IllegalArgumentException(INVALID_PIN_REASON)))
             return
         }
         viewModelScope.launch {
             _connectionState.value = ConnectionState.Connecting
+            session.onConnecting()
             val result = wsTransport.connect(_serverUrl.value, _pin.value)
+            // 结果同步给会话管理器，UI 其他页面（点歌台）据此显示连接态
+            session.onConnectResult(result)
             _connectionState.value = result.fold(
                 onSuccess = { auth: AuthResult ->
                     saveCredentials(auth)
+                    // PIN 留作兜底：Host 重启后 token 会作废，那时还能自动重连
+                    session.rememberPin(_pin.value)
                     ConnectionState.Connected(auth.token, auth.hostKey)
                 },
                 onFailure = { error ->
@@ -114,7 +124,7 @@ class PairViewModel @Inject constructor(
 
     /** 主动断开，回到 [ConnectionState.Discovered]。 */
     fun disconnect() {
-        wsTransport.disconnect()
+        session.reset()
         token = null
         hostKey = null
         savedStateHandle[Constants.KEY_TOKEN] = null

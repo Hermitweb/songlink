@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  网络安全配置。
+
+  为什么必须放行明文：点歌台的 Host 跑在**家里/局域网的一台电脑上**，用 ws:// 与 http:// 通信，
+  没有域名也没有证书。Android 9（API 28）起，只要 targetSdk >= 28 且没有本文件，
+  系统默认 `cleartextTrafficPermitted = false`，OkHttp 在建连时会直接抛：
+
+      java.io.IOException: Cleartext HTTP traffic to 192.168.x.x not permitted
+      （WebSocket 同样适用，ws:// 走的是同一条明文链路）
+
+  结果就是 —— 配对连不上、点歌没反应，而日志里只有一句没头没尾的 "连接失败"。
+  所以这里必须显式放行。
+
+  风险评估：本 App 只会连接用户自己填写的局域网地址，不访问任何公网服务，
+  广播数据也在局域网内，放行明文的影响面可控。若将来要连公网服务，
+  应在下面用 domain-config 对该域名单独设 `cleartextTrafficPermitted="false"`。
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

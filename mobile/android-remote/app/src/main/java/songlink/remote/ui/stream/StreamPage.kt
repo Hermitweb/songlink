@@ -22,12 +22,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import songlink.remote.R
+import songlink.remote.data.audio.MetadataStatus
 import songlink.remote.ui.capture.CaptureProjectionActivity
 
 /**
  * 音频串流页面（PHONE_STREAM 模式入口）
  * 用于手机内置播放器音频抓取并传输到 PC Host
  */
+/** PC Host 的 UDP 音频监听端口，与协议 §3.9 / Host 的 audio:start 默认值一致。 */
+private const val STREAM_PORT = 51000
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun StreamPage(
@@ -144,10 +148,36 @@ fun StreamPage(
                     Spacer(modifier = Modifier.height(8.dp))
                     
                     Text(
-                        text = "延迟：~200ms | 带宽：~128kbps",
+                        text = viewModel.targetHost
+                            ?.let { "已连接电脑：$it · 端口 $STREAM_PORT" }
+                            ?: "还没连上点歌台，无法确定串流目标",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+
+                    // 电脑面板要显示手机的歌词/封面，全靠这条上报链路。
+                    // 读不到时必须说清楚原因，否则用户只会看到"电脑上是空的"。
+                    val md = viewModel.metadataStatus.collectAsState().value
+                    val mdText: String? = when (md) {
+                        is MetadataStatus.Idle -> null
+                        is MetadataStatus.WaitingConnection -> "等待连接电脑…"
+                        is MetadataStatus.NoActiveTrack -> "手机当前没有在播放的歌曲"
+                        is MetadataStatus.ReadUnavailable ->
+                            "读不到手机的播放信息：请在系统设置里允许本应用访问通知"
+
+                        is MetadataStatus.Reporting -> "已上报到电脑：${md.title}"
+                        is MetadataStatus.Failed -> "上报出错：${md.reason}"
+                    }
+                    if (mdText != null) {
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = mdText,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (md is MetadataStatus.ReadUnavailable || md is MetadataStatus.Failed)
+                                MaterialTheme.colorScheme.error
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
             
@@ -167,15 +197,24 @@ fun StreamPage(
                                 Manifest.permission.MODIFY_AUDIO_SETTINGS
                             ))
                         } else if (!isStreaming) {
-                            // Android Q+ 真实 MediaProjection 授权: 跳到 CaptureProjectionActivity
-                            val intent = CaptureProjectionActivity.newIntent(context, "192.168.15.205", 51000)
-                            projectionLauncher.launch(intent)
-                            viewModel.startStreaming(51000) { success, err ->
-                                if (!success) errorMessage = "VM 启动提示: $err"
+                            // 串流目标必须是那台跑着点歌台的电脑（配对时填的地址），
+                            // 不能取手机自己的 IP，也不能写死 —— 以前写死的 192.168.15.205
+                            // 意味着每个用户都得改源码才能用。
+                            val host = viewModel.targetHost
+                            if (host == null) {
+                                errorMessage = "还没连上点歌台，请先在首页完成配对"
+                            } else {
+                                // Android Q+ 真实 MediaProjection 授权: 跳到 CaptureProjectionActivity
+                                projectionLauncher.launch(
+                                    CaptureProjectionActivity.newIntent(context, host, STREAM_PORT)
+                                )
+                                viewModel.startStreaming(STREAM_PORT) { success, err ->
+                                    if (!success) errorMessage = err ?: "启动失败"
+                                }
                             }
                         }
                     },
-                    enabled = hasPermission
+                    enabled = hasPermission && viewModel.targetHost != null
                 ) {
                     Icon(Icons.Default.PlayArrow, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))

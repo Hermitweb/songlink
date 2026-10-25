@@ -34,7 +34,7 @@
     <string name="lyrics_page_title">歌词副屏</string>
     <string name="no_lyrics">暂无歌词</string>
     <string name="calibrate_button">校准延迟</string>
-    <string name="offset_ms">偏移量：{%d} ms</string>
+    <string name="offset_ms">偏移量：%1$d ms</string>
     
     <!-- 队列管理文本 -->
     <string name="queue_count">队列：%d首</string>
