@@ -10,41 +10,139 @@ env:
   DOTNET_VERSION: '8.0.x'
 
 jobs:
+  # ==========================================================================
+  # .NET：构建**整个**解决方案 + 跑**两个**测试工程
+  #
+  # 以前这里只 build 了 Host.Core、只 run 了 Protocol.Tests，而且 run 的时候还带
+  # --no-build —— 测试工程压根没被编译过，dotnet test 找不到测试 dll 直接退出码 1。
+  # 结果是这条流水线从上线起就没绿过，而 Host.Tests 那 190+ 个用例一次都没跑过。
+  # ==========================================================================
   build-test:
+    name: .NET build & test
     runs-on: windows-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
     - name: Setup .NET
-      uses: actions/setup-dotnet@v3
+      uses: actions/setup-dotnet@v4
       with:
         dotnet-version: ${{ env.DOTNET_VERSION }}
-        
+
     - name: Restore dependencies
-      run: dotnet restore
-      
-    - name: Build Host.Core
-      run: dotnet build src/SongLink.Host.Core/SongLink.Host.Core.csproj -c Release --no-restore
-      
-    - name: Run Tests
-      run: dotnet test src/SongLink.Protocol.Tests/SongLink.Protocol.Tests.csproj -c Release --no-build
-      
-  docker-build:
-    needs: build-test
+      run: dotnet restore SongLink.sln
+
+    # 构建整个解决方案，而不是只 build 一个工程：
+    # 适配器(UiaPick/Smtc/Ocr/LocalSource)、桌面端、工具工程都只有在这里才会被编译到。
+    # 之前只 build Host.Core，这些工程坏了 CI 也不会响。
+    - name: Build solution (Release)
+      run: dotnet build SongLink.sln -c Release --no-restore
+
+    # 注意 -p:Platform=AnyCPU 不能省：dotnet test 会按 testhost 架构把 Platform
+    # 解析成 x64、去 bin\x64\Release 找测试 dll；而上面 dotnet build SongLink.sln
+    # （sln 把 x64 映射回 Any CPU）输出在 bin\Release，--no-build 必然找不到文件。
+    # 本机 SDK 8.0.422 与 10.0.402 均已实测复现。
+    - name: Run protocol tests
+      run: >-
+        dotnet test src/SongLink.Protocol.Tests/SongLink.Protocol.Tests.csproj
+        -c Release --no-build -p:Platform=AnyCPU
+        --logger "trx;LogFileName=protocol-tests.trx"
+
+    - name: Run host tests
+      run: >-
+        dotnet test src/SongLink.Host.Tests/SongLink.Host.Tests.csproj
+        -c Release --no-build -p:Platform=AnyCPU
+        --logger "trx;LogFileName=host-tests.trx"
+
+    - name: Upload test results
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: dotnet-test-results
+        path: |
+          src/SongLink.Protocol.Tests/TestResults/*.trx
+          src/SongLink.Host.Tests/TestResults/*.trx
+        retention-days: 14
+
+  # ==========================================================================
+  # Android：编译 APK + 跑单元测试
+  #
+  # 仓库里没有预编译的 APK（app/build/ 被 .gitignore 忽略），所以"能不能出包"
+  # 只能靠 CI 来保证。之前 CI 完全不管 Android，模块烂掉了都没人知道。
+  # ==========================================================================
+  android-build:
+    name: Android APK & unit tests
     runs-on: ubuntu-latest
-    
+
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
+
+    - name: Setup JDK 17
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: '17'
+
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v3
+      with:
+        packages: 'platforms;android-34 build-tools;34.0.0'
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+
+    - name: Gradle cache
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-${{ runner.os }}-${{ hashFiles('mobile/android-remote/**/*.kts') }}
+        restore-keys: gradle-${{ runner.os }}-
+
+    - name: Build APK and run unit tests
+      working-directory: mobile/android-remote
+      run: ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug
+
+    - name: Upload APK
+      uses: actions/upload-artifact@v4
+      with:
+        name: songlink-android-debug
+        path: mobile/android-remote/app/build/outputs/apk/debug/*.apk
+        retention-days: 14
+
+    - name: Upload test report
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: android-test-results
+        path: mobile/android-remote/app/build/reports/tests/**/*.xml
+        retention-days: 14
+
+  # ==========================================================================
+  # Docker：只是"镜像能构建出来"的冒烟测试
+  #
+  # 注意 file: 这一行不能少 —— Dockerfile 不在仓库根目录，而在
+  # src/SongLink.Host.Core/Dockerfile。少了它 docker 会去找根目录的 Dockerfile，
+  # 那个文件不存在，这个 job 必然失败。
+  # ==========================================================================
+  docker-build:
+    name: Docker image
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
     - name: Set up Docker Buildx
-      uses: docker/setup-buildx-action@v2
-      
+      uses: docker/setup-buildx-action@v3
+
     - name: Build Docker image
-      uses: docker/build-push-action@v4
+      uses: docker/build-push-action@v6
       with:
         context: .
+        file: ./src/SongLink.Host.Core/Dockerfile
         push: false
         tags: songlink/host:${{ github.sha }}
