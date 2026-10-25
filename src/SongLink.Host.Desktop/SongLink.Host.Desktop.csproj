@@ -2,13 +2,24 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!--
+      提到 net8.0-windows10.0.19041.0：SongLink.Host.Adapters.Smtc 用 Windows.Media
+      媒体会话 API，其 TFM 就是 windows10.0.19041，低版本项目无法引用高版本。
+      WebView2 本身也要求 Windows 10+，所以这个下限对本产品是合理的。
+    -->
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
     <Nullable>enable</Nullable>
     <UseWindowsForms>true</UseWindowsForms>
     <ImplicitUsings>enable</ImplicitUsings>
     <RootNamespace>SongLink.Host.Desktop</RootNamespace>
     <AssemblyName>SongLink</AssemblyName>
-    <ApplicationIcon></ApplicationIcon>
+    <!--
+      品牌图标（app.ico 由 scripts/generate-brand-icons.py 从 assets/brand 原稿生成）。
+      它同时被编译进 exe 的 PE 资源（任务栏 / 资源管理器 / 快捷方式都用这一份），
+      又作为嵌入资源保留一份给运行时加载托盘图标 —— 单文件发布后磁盘上没有独立 .ico，
+      只能从程序集里读。
+    -->
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <NoWarn>$(NoWarn);CA1416</NoWarn>
     <!--
       Self-contained single-file 发布属性不放在默认里,避免 SDK 报 NETSDK1150
@@ -23,10 +34,42 @@
 
   <ItemGroup>
     <ProjectReference Include="..\SongLink.Host.Core\SongLink.Host.Core.csproj" />
+    <!--
+      直接引用两个"即开即用"的适配器，而不是走 AdapterFactory 的反射加载：
+      单文件发布(PublishSingleFile)下 Assembly.Location 为空，反射按路径找 DLL 必失败。
+      直接项目引用 + 直接 new 才对 single-file 友好。
+
+      - LocalSource：本地音乐文件夹，ReadMeta/Transport/Pick/Search/Volume 全能力，
+        用 NAudio WaveOutEvent 真出声，且不需要任何校准 —— 这是"装完就能用"的路径。
+      - Smtc：接管 Windows 媒体会话（QQ音乐/网易云/酷狗等任何在播的 App），
+        ReadMeta/Transport，不需要校准，但不支持搜索点歌。
+    -->
+    <ProjectReference Include="..\SongLink.Host.Adapters.LocalSource\SongLink.Host.Adapters.LocalSource.csproj" />
+    <ProjectReference Include="..\SongLink.Host.Adapters.Smtc\SongLink.Host.Adapters.Smtc.csproj" />
+    <!--
+      UiaPick：QQ音乐/酷狗 这类 CEF 套壳客户端 UIA 读不到控件，只能用坐标驱动它自己的
+      搜索框点歌（CoordinateMusicPicker）。坐标标定数据在 descriptors/*.json。
+    -->
+    <ProjectReference Include="..\SongLink.Host.Adapters.UiaPick\SongLink.Host.Adapters.UiaPick.csproj" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2277.37" />
+    <!-- 品牌图标资源 -->
+    <EmbeddedResource Include="app.ico" LogicalName="SongLink.Host.Desktop.app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 标定数据要跟着发布走，否则单文件发布后找不到描述符 -->
+    <Content Include="..\SongLink.Host.Adapters.UiaPick\descriptors\**\*.json"
+             Link="descriptors\%(RecursiveDir)%(Filename)%(Extension)"
+             CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 版本必须写实际存在的那个：1.0.2277.37 在 NuGet 上并不存在，
+         以前写它每次还原都会报 NU1603（自动解析成 1.0.2277.86）。
+         这里直接钉住真正解析到的版本，告警消失、行为不变。 -->
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2277.86" />
   </ItemGroup>
 
 </Project>

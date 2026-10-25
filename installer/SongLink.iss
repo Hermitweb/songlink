@@ -33,6 +33,10 @@ LZMAUseSeparateProcess=yes
 ; 视觉
 WizardStyle=modern
 WizardSizePercent=120
+; 品牌图标（由 scripts/generate-brand-icons.py 生成）
+SetupIconFile=setup.ico
+WizardImageFile=wizard.bmp
+WizardSmallImageFile=wizard-small.bmp
 ; 权限
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
@@ -73,15 +77,18 @@ Type: filesandordirs; Name: "{localappdata}\{#MyAppShortName}\logs"
 [Code]
 // 安装前:检测是否已装,可选复用旧版本号
 function InitializeSetup(): Boolean;
-var
-    ResultCode: Integer;
 begin
     Result := True;
 end;
 
 // 卸载前:尝试关闭运行中的实例
 function InitializeUninstall(): Boolean;
+var
+    // 之前这个函数里没声明 ResultCode，Pascal Script 作用域是函数级的，
+    // 于是 Exec 的最后一个参数解析不到，ISCC 报 Unknown identifier 'ResultCode'。
+    ResultCode: Integer;
 begin
+    // Exec 签名: Exec(Filename, Params, WorkingDir, ShowWnd, Wait, var ResultCode)
     Exec('taskkill', '/F /IM {#MyAppExeName}', '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
     Sleep(500);
     Result := True;
