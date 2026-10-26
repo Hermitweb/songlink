@@ -20,7 +20,7 @@ object PacketFramer {
     /** 帧头部大小：1+1+4+8+2 = 16 字节。 */
     const val HEADER_SIZE = 16
 
-    /** 拼装一帧完整 datagram（包含头部 + 裸 PCM 载荷）。 */
+    /** 拼装一帧完整 datagram（头部 + 裸 PCM 载荷；flags bit2 = 1，Host 走 PCM 直通）。 */
     fun assemblePcmFrame(
         version: Byte,
         flags: Byte,
@@ -28,16 +28,39 @@ object PacketFramer {
         pts: Long,
         pcm: ByteArray
     ): ByteArray {
-        require(pcm.isNotEmpty()) { "PCM 载荷不能为空" }
-        require(pcm.size <= 0xFFFF) { "单帧 PCM 不能超过 65535 字节 (实际 ${pcm.size})" }
+        return assembleFrame(version, flags, seq, pts, pcm, kind = "PCM")
+    }
 
-        val out = ByteBuffer.allocate(HEADER_SIZE + pcm.size).order(ByteOrder.BIG_ENDIAN)
+    /** 拼装一帧完整 datagram（Opus 编码载荷；flags bit2 = 0，Host 走 OpusCodec 解码）。 */
+    fun assembleOpusFrame(
+        version: Byte,
+        flags: Byte,
+        seq: Long,
+        pts: Long,
+        opus: ByteArray
+    ): ByteArray {
+        return assembleFrame(version, flags, seq, pts, opus, kind = "Opus")
+    }
+
+    /** 通用封帧：与 C# [AudioStreamWire.Assemble] 字节对齐。[kind] 仅用于校验错误消息。 */
+    private fun assembleFrame(
+        version: Byte,
+        flags: Byte,
+        seq: Long,
+        pts: Long,
+        payload: ByteArray,
+        kind: String
+    ): ByteArray {
+        require(payload.isNotEmpty()) { "${kind} 载荷不能为空" }
+        require(payload.size <= 0xFFFF) { "单帧 ${kind} 载荷不能超过 65535 字节 (实际 ${payload.size})" }
+
+        val out = ByteBuffer.allocate(HEADER_SIZE + payload.size).order(ByteOrder.BIG_ENDIAN)
         out.put(version)
         out.put(flags)
         out.putInt(seq.toInt())
         out.putLong(pts)
-        out.putShort(pcm.size.toShort())
-        out.put(pcm)
+        out.putShort(payload.size.toShort())
+        out.put(payload)
         return out.array()
     }
 }

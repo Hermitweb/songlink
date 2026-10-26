@@ -21,7 +21,8 @@ import javax.inject.Singleton
  *
  * 当前 commit 范围：
  *   - UDP 推送路径 + §4 封帧已 work（[PhoneAudioCapturer.assemblePcmFrame]）
- *   - Opus 编码未实现（占位用 PCM 直通；Host 端 flags bit2 触发 PCM 直通解码）
+ *   - Opus 编码（2026-10-26 起）：[OpusJni] 有 native 库时走 Opus（flags bit2=0），
+ *     没有 NDK 的机器自动回退裸 PCM 直通（flags bit2=1，Host 已支持两条路径）
  *   - 真机 end-to-end 验证需要：MediaProjection 用户授权 + PC Host 启动 AudioStreamSink
  *     （C# 端兼容 PCM 直通需要单独 PR 扩 [AudioStreamWire]）
  *

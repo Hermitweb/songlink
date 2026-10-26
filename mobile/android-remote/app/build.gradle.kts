@@ -21,6 +21,30 @@ android {
         vectorDrawables {
             useSupportLibrary = true
         }
+        // AGP 8.2 默认找 NDK 25.1.8937393；本机 SDK 没装它（装了 26.1/28.2），
+        // 显式钉到可用的 28.2，否则 externalNativeBuild 直接失败。
+        // CI 的 ubuntu runner 也没有 28.2 → 在 ci.yml 装对应包（见 .github/workflows/ci.yml）。
+        ndkVersion = "28.2.13676358"
+        // Opus 编码器 native 库（third_party/opus，NDK 现编）。
+        // 没有 NDK 的机器：Kotlin 侧 OpusJni.load() 返回 false，自动回退裸 PCM 直通。
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
+        }
+    }
+
+    // Opus 编码器：NDK + CMake 现编 third_party/opus 源码（见 app/src/main/cpp）。
+    // opus 是纯 C、JNI 薄壳也是 C，不需要 C++ STL，故不传 -DANDROID_STL。
+    //
+    // 逃生舱：-PskipNative 关掉 native 构建。AGP 在"仓库路径含非 ASCII 字符"的
+    // 机器上写 CMake 元数据会因编码截断报 MalformedJsonException（已在本机复现），
+    // 那种机器用 -PskipNative 出纯 APK，Kotlin 侧 OpusJni.load() 返回 false 自动
+    // 回退裸 PCM 直通（Host 已支持）。ASCII 路径的机器与 CI 正常编出 libsonglink_opus.so。
+    if (!project.hasProperty("skipNative")) {
+        externalNativeBuild {
+            cmake {
+                path("src/main/cpp/CMakeLists.txt")
+            }
+        }
     }
 
     buildTypes {

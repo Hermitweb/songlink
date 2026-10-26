@@ -13,8 +13,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import songlink.remote.data.audio.MetadataReporter
 import songlink.remote.data.audio.MetadataStatus
+import songlink.remote.data.audio.PhoneAudioCapturer
+import songlink.remote.data.model.AudioStart
+import songlink.remote.data.model.AudioStop
 import songlink.remote.data.repo.SessionManager
 import songlink.remote.data.transport.AudioTransportManager
+import songlink.remote.data.transport.WsTransport
 import javax.inject.Inject
 import dagger.hilt.android.lifecycle.HiltViewModel
 
@@ -25,7 +29,8 @@ import dagger.hilt.android.lifecycle.HiltViewModel
 class StreamViewModel @Inject constructor(
     private val audioTransportManager: AudioTransportManager,
     private val session: SessionManager,
-    private val metadataReporter: MetadataReporter
+    private val metadataReporter: MetadataReporter,
+    private val transport: WsTransport
 ) : ViewModel() {
 
     // 当前连接状态
@@ -64,6 +69,19 @@ class StreamViewModel @Inject constructor(
 
                 streamUrl = "udp://$hostIp:$port"
                 isConnected = true
+
+                // 先发 audio:start 让 Host 按正确参数起 Opus 解码器（采样率/声道/帧长/UDP 端口）。
+                // 参数必须对齐 PhoneAudioCapturer 的采集：48 kHz / 单声道 / 20 ms。
+                // 不发这条帧的话 Host 用默认 48k/2ch 建解码器，接的是单声道流——解码器
+                // 声道数不匹配，Opus 解码直接失败，音频全丢。
+                transport.send(AudioStart(
+                    codec = "opus",
+                    rate = PhoneAudioCapturer.SAMPLE_RATE,
+                    ch = 1,
+                    frameMs = PhoneAudioCapturer.FRAME_MS,
+                    port = port,
+                    seq = transport.nextSeq(),
+                ))
 
                 // 开始把"手机上正在放哪首歌"上报给电脑 —— 电脑面板靠这条 srcMeta
                 // 才能显示对应的歌词和封面。不开的话音频过去了，电脑上却还是空白的。
@@ -104,6 +122,8 @@ class StreamViewModel @Inject constructor(
         streamingJob?.cancel()
         audioTransportManager.stopAudioCapture()
         metadataReporter.stop()
+        // 通知 Host 关掉 UDP 监听（Host 据此 Dispose AudioStreamSink）
+        transport.send(AudioStop())
         streamUrl = ""
     }
 }

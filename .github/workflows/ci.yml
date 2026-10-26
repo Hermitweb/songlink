@@ -88,7 +88,11 @@ jobs:
     - name: Setup Android SDK
       uses: android-actions/setup-android@v3
       with:
-        packages: 'platforms;android-34 build-tools;34.0.0'
+        # ndk;28.2.13676358 与 cmake;3.22.1：app 声明了 externalNativeBuild
+        # （Opus 编码器，third_party/opus），缺 NDK 时该 job 直接失败。
+        # CI 的 runner 路径是 ASCII（/home/runner/...），不受本机那种
+        # "非 ASCII 路径 → CMake 元数据编码截断"问题影响，正常编出 .so。
+        packages: 'platforms;android-34 build-tools;34.0.0 ndk;28.2.13676358 cmake;3.22.1'
 
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4

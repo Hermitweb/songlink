@@ -29,12 +29,14 @@ import java.net.InetAddress
  *   2. 系统返回 [MediaProjection] token，UI 把它交给 [captureProjection]
  *   3. 调用 [startCapture]——真使用 [AudioPlaybackCaptureConfiguration]（API 29+）
  *      或 [AudioFormat.CHANNEL_IN_MONO] + VOICE_CALL（API 26-28 fallback）
- *   4. 本类按 §4 帧格式封 UDP datagram，48 kHz / 单声道 / 20 ms / 1920 B/帧
+ *   4. 本类按 §4 帧格式封 UDP datagram，48 kHz / 单声道 / 20 ms
  *
- * NOTE 当前 commit 限制:
- *  - **载荷是裸 16-bit PCM**（不是 Opus），用 flags bit2 = 1 标识，见 [FLAG_PCM_RAW]
- *  - 真正的 Opus 编码要 libopus JNI（~500 KB），留待独立 PR；flags bit2 = 0 时 Host 走 OpusCodec
- *  - UI Activity / CaptureService 的 MediaProjection 入口未提交——本类只暴露 hook；调用方未注入 token 时 API 29+ 直接报 "NEED_PROJECTION"，不会静默无数据
+ * 编码路径（2026-10-26 起）：
+ *  - **首选 Opus**：[OpusJni]（libopus NDK 现编，源码 third_party/opus）编码后走
+ *    flags bit2 = 0，Host 侧 OpusCodec + 抖动缓冲/PLC 解码。~32 kbps 足够，
+ *    比裸 PCM（48k/mono ≈ 960 kbps）小 30 倍。
+ *  - **回退裸 PCM**：本机没有 NDK（或 gradle -PskipNative 出包）时 OpusJni 加载失败，
+ *    自动按 flags bit2 = 1 直通，链路仍通（只是带宽大、无 PLC）。
  *
  * 真机必做前置：UI 拿到 MediaProjection 后 [captureProjection](token)、再 [startCapture]
  * CI/JVM 单测：不走到 [record.startRecording()]，可在 onError 断言 NEED_PROJECTION 分支
@@ -87,6 +89,11 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
         // 单帧 48k * 20ms * 单声道 * 2 字节 = 1920 B
         val frameSizeBytes = (SAMPLE_RATE * FRAME_MS / 1000) * 1 * 2
 
+        // Opus 编码（JNI）：有 native 库就编 Opus（flags bit2=0，~32 kbps 足够），
+        // 没有（无 NDK 出包）回退裸 PCM 直通（flags bit2=1，Host 已支持）。
+        val opusHandle = OpusJni.create(SAMPLE_RATE, 1, 32_000, FRAME_MS)
+        val useOpus = opusHandle != 0L
+
         captureJob = scope.launch {
             try {
                 val proj = projection
@@ -114,6 +121,7 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
                         maxOf(minBuf, frameSizeBytes * 4))
                 }
                 record?.startRecording() ?: run {
+                    if (useOpus) OpusJni.destroy(opusHandle)
                     onResult(false, "AudioRecord.startRecording() 失败"); return@launch
                 }
 
@@ -122,6 +130,8 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
                 onResult(true, null)
 
                 val buffer = ByteArray(frameSizeBytes)
+                val shortBuf = ShortArray(buffer.size / 2)
+                val opusOut = ByteArray(2_000)   // 20 ms @32kbps 的包远小于此
                 var seq: Long = 0
                 var pts: Long = 0
                 val samplesPerFrame = (SAMPLE_RATE * FRAME_MS / 1000).toLong()
@@ -136,11 +146,35 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
                     seq++
                     pts += samplesPerFrame
 
-                    val payload: ByteArray = if (n == buffer.size) buffer else buffer.copyOf(n)
-                    val frame = PacketFramer.assemblePcmFrame(
-                        version = WIRE_VERSION,
-                        flags = (FLAG_FIRST or FLAG_LAST or FLAG_PCM_RAW).toByte(),
-                        seq = seq, pts = pts, pcm = payload)
+                    val payload: ByteArray = if (useOpus) {
+                        // 16-bit PCM 字节（小端）→ short[]，再 Opus 编码
+                        var s = 0
+                        for (i in 0 until shortBuf.size) {
+                            shortBuf[i] = ((buffer[s] .toInt() and 0xFF) or
+                                    (buffer[s + 1].toInt() shl 8)).toShort()
+                            s += 2
+                        }
+                        val encN = OpusJni.encode(opusHandle, shortBuf, shortBuf.size, opusOut)
+                        when {
+                            encN <= 0 -> {
+                                // 编码失败：本帧跳掉（不计入 PCM 直通，避免混模式）
+                                Log.w(TAG, "Opus encode 失败 code=$encN，跳过本帧")
+                                continue
+                            }
+                            else -> opusOut.copyOf(encN)
+                        }
+                    } else if (n == buffer.size) {
+                        buffer   // 裸 PCM 直通
+                    } else {
+                        buffer.copyOf(n)
+                    }
+
+                    val flags = if (useOpus) (FLAG_FIRST or FLAG_LAST).toByte()
+                                else (FLAG_FIRST or FLAG_LAST or FLAG_PCM_RAW).toByte()
+                    val frame = if (useOpus) PacketFramer.assembleOpusFrame(
+                        version = WIRE_VERSION, flags = flags, seq = seq, pts = pts, opus = payload)
+                    else PacketFramer.assemblePcmFrame(
+                        version = WIRE_VERSION, flags = flags, seq = seq, pts = pts, pcm = payload)
 
                     try {
                         val s = socket ?: break
@@ -156,6 +190,7 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
                 Log.e(TAG, "采集异常", t)
                 onResult(false, t.message ?: "采集异常")
             } finally {
+                if (useOpus) OpusJni.destroy(opusHandle)
                 stopInternal()
             }
         }
