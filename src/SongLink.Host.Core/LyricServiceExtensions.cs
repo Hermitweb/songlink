@@ -24,34 +24,36 @@ public static class LyricServiceExtensions
     {
         if (service.TryGet(title, artist) is not null)
             return true; // 本地已有，跳过
-        
-        var query = $"{title} {artist}".Replace(' ', '+');
-        
+
         try
         {
-            // 调用 LRCLib GET /get?track_name=xxx&artist_name=xxx
-            var response = await LrclibClient.GetAsync(
-                $"get?track_name={query}&artist_name={query}", 
-                ct);
-            
+            // LRCLib 要求 title 与 artist **分开**传（此前把 "{title} {artist}" 整串同时
+            // 塞进两个参数，带歌手的查询基本永远 404/miss）。
+            var uri = new UriBuilder("get")
+            {
+                Query = $"track_name={Uri.EscapeDataString(title)}&artist_name={Uri.EscapeDataString(artist)}"
+            }.Uri;
+            var response = await LrclibClient.GetAsync(uri, ct);
+
             if (!response.IsSuccessStatusCode) return false;
-            
+
             var lyricsJson = await response.Content.ReadAsStringAsync(ct);
             var lrclibResponse = System.Text.Json.JsonSerializer.Deserialize<LrclibLyrics>(lyricsJson);
-            
-            if (lrclibResponse?.syncedLyrics is not null && lrclibResponse.syncedLyrics.Length > 0)
-            {
-                // 转换为本地 LRC 格式并缓存
-                var lrcContent = ConvertLrclibToLrc(lrclibResponse);
-                var filePath = Path.Combine(service.LibraryDirectory, $"{SafeName(title)} - {SafeName(artist)}.lrc");
-                
-                File.WriteAllText(filePath, lrcContent);
-                Console.WriteLine($"[lyric] 成功从 LRCLib 拉取并缓存：{title} - {artist}");
-                
-                return true;
-            }
-            
-            return false;
+
+            var synced = lrclibResponse?.syncedLyrics;
+            // 只要带时间轴的同步歌词：纯文本(plainLyrics)没有时间戳，
+            // 缓存进来 LyricService 也解析不出时间轴（TryGet 仍返回 null），
+            // 且会污染缓存目录、让后续“本地已有”判断误判，故不缓存。
+            if (string.IsNullOrWhiteSpace(synced)) return false;
+
+            // 转换为本地 LRC 格式并缓存（有 duration 时补 [length:]，供 #11 唇同步/进度对齐）
+            var lrcContent = ConvertLrclibToLrc(lrclibResponse!);
+            var filePath = Path.Combine(service.LibraryDirectory, $"{SafeName(title)} - {SafeName(artist)}.lrc");
+
+            File.WriteAllText(filePath, lrcContent);
+            Console.WriteLine($"[lyric] 成功从 LRCLib 拉取并缓存：{title} - {artist}");
+
+            return true;
         }
         catch (HttpRequestException ex)
         {
@@ -78,7 +80,7 @@ public static class LyricServiceExtensions
     /// 旧实现把它按"空格切分再 double.Parse 时间"是错误前提（实际上第 0 段是
     /// <c>[01:23.45]</c> 这种带方括号带冒号的字符串，<c>double.Parse</c> 必抛 FormatException）。
     /// 正确做法：直接透传 <c>syncedLyrics</c>，仅当缺元数据时按 LRC 惯例在头部补
-    /// <c>[ti:]</c> 与 <c>[ar:]</c>。
+    /// <c>[ti:]</c> 与 <c>[ar:]</c>；有 <c>duration</c> 时再补 <c>[length:]</c>（#11 进度对齐用）。
     /// </summary>
     private static string ConvertLrclibToLrc(LrclibLyrics lrclib)
     {
@@ -89,26 +91,31 @@ public static class LyricServiceExtensions
 
         bool hasTi = lines.Any(l => l.TrimStart().StartsWith("[ti:", StringComparison.OrdinalIgnoreCase));
         bool hasAr = lines.Any(l => l.TrimStart().StartsWith("[ar:", StringComparison.OrdinalIgnoreCase));
+        bool hasLength = lines.Any(l => l.TrimStart().StartsWith("[length:", StringComparison.OrdinalIgnoreCase));
 
+        var head = new List<string>();
         if (!hasTi && lrclib.track?.title is { Length: > 0 } tt)
-            lines.Insert(0, $"[ti:{tt}]");
+            head.Add($"[ti:{tt}]");
         if (!hasAr && lrclib.track?.artist is { Length: > 0 } ar)
-        {
-            // [ar:] 应紧随 [ti:] 之后；若 [ti:] 是新插入的，它在 index 0，
-            // 否则 [ti:] 是 LRCLib 原本就有的，仍在 index 0。
-            int insertAt = (lines.Count > 0 && lines[0].TrimStart().StartsWith("[ti:", StringComparison.OrdinalIgnoreCase))
-                ? 1 : 0;
-            lines.Insert(insertAt, $"[ar:{ar}]");
-        }
+            head.Add($"[ar:{ar}]");
+        if (!hasLength && lrclib.track?.duration is { Length: > 0 } dur)
+            head.Add($"[length:{dur}]");
+        lines.InsertRange(0, head);
 
         return string.Join("\n", lines);
     }
 
-    /// <summary>LRCLib API 响应模型</summary>
+    /// <summary>
+    /// LRCLib API 响应模型。字段对齐 https://lrclib.net/api-docs：
+    /// <see href="https://lrclib.net/api-docs#/default/get-synced-lyrics-by-track-details/get_0"/>。
+    /// 同步歌词 = <c>syncedLyrics</c>；纯文本 = <c>plainLyrics</c>（无时间轴，不缓存）；
+    /// 时长 = <c>track.duration</c>（"MM:SS"）。
+    /// </summary>
     private sealed class LrclibLyrics
     {
         public TrackInfo? track { get; set; }
         public string? syncedLyrics { get; set; }
+        public string? plainLyrics { get; set; }
     }
 
     private sealed class TrackInfo
@@ -116,5 +123,8 @@ public static class LyricServiceExtensions
         public string? title { get; set; }
         public string? artist { get; set; }
         public string? album { get; set; }
+
+        /// <summary>时长 "MM:SS"（LRCLib 返回字符串）。</summary>
+        public string? duration { get; set; }
     }
 }

@@ -272,8 +272,10 @@ public class AudioStreamSinkTests
         using var sender = new System.Net.Sockets.UdpClient(0);
         await sender.SendAsync(frame, new System.Net.IPEndPoint(System.Net.IPAddress.Loopback, sink.LocalPort));
 
+        // 抖动缓冲按节拍吐帧（PumpLoop 30ms 一拍），所以要等到渲染器真的收到样本，
+        // 而不是"收包计数到了"就断言。
         var deadline = DateTime.UtcNow.AddSeconds(2);
-        while (DateTime.UtcNow < deadline && sink.FramesPcmPassthrough < 1)
+        while (DateTime.UtcNow < deadline && renderer.SamplesWritten < 960)
             await Task.Delay(20);
 
         Assert.True(sink.FramesPcmPassthrough >= 1, $"应至少 1 帧 PCM 直通，实际 {sink.FramesPcmPassthrough}");

@@ -24,6 +24,15 @@ public sealed class AudioStreamSink : IDisposable
     private readonly int _port;
     private readonly object _lock = new();
 
+    /// <summary>
+    /// 接收侧抖动缓冲：乱序重排 + 丢包补静音。此前"收一帧解一帧直写渲染器"，
+    /// UDP 乱序/丢包会直接表现为爆音、卡顿、时间轴漂移。
+    /// </summary>
+    private readonly JitterBuffer _jitter = new();
+
+    /// <summary>抖动缓冲指标（补静音帧数）。</summary>
+    public long JitterSilenceFrames => _jitter.SilenceFrames;
+
     private CancellationTokenSource? _cts;
     private UdpClient? _udp;
     private Task? _loop;
@@ -80,6 +89,42 @@ public sealed class AudioStreamSink : IDisposable
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
             _loop = Task.Run(() => ReceiveLoop(token));
+            _pump = Task.Run(() => PumpLoop(token));
+        }
+    }
+
+    /// <summary>消费侧节拍泵：按帧时长匀速从 <see cref="JitterBuffer"/> 吐帧，
+    /// 避免"收一帧解一帧直写渲染器"造成的爆音/卡顿/时间轴漂移。</summary>
+    private Task? _pump;
+
+    private async Task PumpLoop(CancellationToken ct)
+    {
+        // 帧节拍：与 Android 端 20ms 帧对齐。WASAPI/Null 写入本身很快，
+        // 30ms 一拍留出乱序吸收窗口（≤ 3 帧内的重排都能抹平）且不放大延迟。
+        while (!ct.IsCancellationRequested)
+        {
+            try
+            {
+                // 只在模式已锁定后泵出（首帧前没有可吐的帧）
+                if (ActiveMode is { } m)
+                {
+                    var nowMs = (long)(Environment.TickCount64 % int.MaxValue);
+                    var (has, pcm, wasSilence) = _jitter.TryTake(nowMs);
+                    if (has && pcm.Length > 0)
+                    {
+                        _renderer.WriteShort(pcm);
+                        if (!wasSilence)
+                            Interlocked.Increment(ref _framesDecoded);
+                    }
+                }
+                await Task.Delay(30, ct);
+            }
+            catch (OperationCanceledException) { break; }
+            catch
+            {
+                Interlocked.Increment(ref _decodeErrors);
+                await Task.Delay(30, ct);
+            }
         }
     }
 
@@ -134,8 +179,10 @@ public sealed class AudioStreamSink : IDisposable
                     // 而 OpusCodec 配置可能不同）。一旦确定模式就锁死。
                     EnsureRendererFor(isRawPcm);
 
-                    _renderer.WriteShort(pcm);
-                    System.Threading.Interlocked.Increment(ref _framesDecoded);
+                    // 不再"收一帧解一帧直写渲染器"：交抖动缓冲做乱序重排 + 丢包补静音，
+                    // 由 PumpLoop 按节拍消费（_framesDecoded 在泵里计）。
+                    _jitter.Offer((byte)(frame.Seq & 0xFF), pcm,
+                        Environment.TickCount64);
                     if (isRawPcm) System.Threading.Interlocked.Increment(ref _framesPcmPassthrough);
                 }
                 catch (Exception ex)
