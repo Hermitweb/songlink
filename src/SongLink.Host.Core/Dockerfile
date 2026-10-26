@@ -2,17 +2,25 @@
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
 WORKDIR /src
 
-# Copy project files and restore dependencies
-COPY src/SongLink.Host.Core/*.csproj ./
+# Host.Core 引用了 SongLink.Protocol 与 SongLink.Host.AudioStream 两个工程，
+# 镜像里必须按原始相对目录结构一起拷进来，ProjectReference 才解析得到。
+# （之前只拷 Host.Core 自己，publish 全线 CS0234。）
+COPY src/SongLink.Protocol/SongLink.Protocol.csproj src/SongLink.Protocol/
+COPY src/SongLink.Host.AudioStream/SongLink.Host.AudioStream.csproj src/SongLink.Host.AudioStream/
+COPY src/SongLink.Host.Core/SongLink.Host.Core.csproj src/SongLink.Host.Core/
+
 # 两点：
 #   1. restore 不支持 -o/--output（那是 build/publish 的开关，restore 用了会报
-#      MSB1001 Unknown switch，CI 的 docker job 曾因此挂掉）；缓存包目录用 --packages。
+#      MSB1001 Unknown switch）；缓存包目录用 --packages。
 #   2. EnableWindowsTargeting 在 Linux 上构建 net8.0-windows 目标是必须的。
-RUN dotnet restore --packages /app/dependencies -p:EnableWindowsTargeting=true
+RUN dotnet restore src/SongLink.Host.Core/SongLink.Host.Core.csproj \
+    --packages /app/dependencies -p:EnableWindowsTargeting=true
 
 # Copy source code and publish
-COPY src/SongLink.Host.Core/ .
-RUN dotnet publish SongLink.Host.Core.csproj -c Release -o /app/publish --no-restore -p:EnableWindowsTargeting=true
+COPY src/SongLink.Protocol/ src/SongLink.Protocol/
+COPY src/SongLink.Host.AudioStream/ src/SongLink.Host.AudioStream/
+COPY src/SongLink.Host.Core/ src/SongLink.Host.Core/
+RUN dotnet publish src/SongLink.Host.Core/SongLink.Host.Core.csproj -c Release -o /app/publish --no-restore -p:EnableWindowsTargeting=true
 
 # ⚠️ 这个镜像的定位：**构建冒烟验证**，不是部署形态。
 #

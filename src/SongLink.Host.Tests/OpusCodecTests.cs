@@ -348,13 +348,22 @@ public class AudioStreamSinkTests
             $"模式锁后, raw-pcm 帧应被丢弃: PCM={sink.FramesPcmPassthrough}, Err={sink.DecodeErrors}");
     }
 
+    /// <summary>向系统要一个当前空闲的 UDP 端口（绑 0 后读回）。
+    /// 比固定区间随机稳：CI runner 上 51_000~54_007 一段可能被别的进程占着
+    /// （2026-10-26 的 CI 就因此挂过一次 Sink_with_port_already_bound）。</summary>
+    private static int FreeUdpPort()
+    {
+        using var probe = new System.Net.Sockets.UdpClient(0);
+        return ((System.Net.IPEndPoint)probe.Client.LocalEndPoint!).Port;
+    }
+
     /// <summary>Android 端固定推 51000,Host 必须真绑到那个端口 — 验证 commit d188d9f 的 explicit-port 修复。</summary>
     [Fact]
     public void Sink_with_explicit_port_binds_exactly_that_port()
     {
         using var codec = new OpusCodec(sampleRate: 16_000, channels: 1);
         var renderer = new NullRenderer();
-        var port = 51_000 + Random.Shared.Next(8);
+        var port = FreeUdpPort();
         using var sink = new AudioStreamSink(codec, renderer, port: port);
         sink.Start();
         Assert.Equal(port, sink.LocalPort);
@@ -368,7 +377,7 @@ public class AudioStreamSinkTests
     {
         using var codec = new OpusCodec(sampleRate: 16_000, channels: 1);
         var renderer = new NullRenderer();
-        var port = 52_000 + Random.Shared.Next(8);
+        var port = FreeUdpPort();
 
         using var first = new AudioStreamSink(codec, new NullRenderer(), port: port);
         first.Start();
@@ -389,7 +398,7 @@ public class AudioStreamSinkTests
     {
         using var codec = new OpusCodec(sampleRate: 16_000, channels: 1);
         var renderer = new NullRenderer();
-        var port = 53_000 + Random.Shared.Next(8);
+        var port = FreeUdpPort();
         using var sink = new AudioStreamSink(codec, renderer, port: port);
 
         sink.Start();
@@ -407,7 +416,7 @@ public class AudioStreamSinkTests
     {
         using var codec = new OpusCodec(sampleRate: 16_000, channels: 1);
         var renderer = new NullRenderer();
-        var port = 54_000 + Random.Shared.Next(8);
+        var port = FreeUdpPort();
         var sink = new AudioStreamSink(codec, renderer, port: port);
 
         sink.Start();
