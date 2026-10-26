@@ -32,7 +32,6 @@ public sealed class AudioStreamSink : IDisposable
 
     /// <summary>抖动缓冲指标（补静音帧数）。</summary>
     public long JitterSilenceFrames => _jitter.SilenceFrames;
-
     private CancellationTokenSource? _cts;
     private UdpClient? _udp;
     private Task? _loop;
@@ -68,6 +67,11 @@ public sealed class AudioStreamSink : IDisposable
         _codec = codec ?? throw new ArgumentNullException(nameof(codec));
         _renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
         _port = port;
+        // 丢包掩盖：Opus 模式下缺口补帧走 OpusCodec PLC（空包 + fec:true，已实测
+        // 输出连续衰减的自然信号，比死静音好听得多）；PCM 直通模式没有编码器
+        // 状态可言，补死静音（PCM 帧本身已是解码产物，无 PLC 语义）。
+        _jitter.LossFrameFactory =
+            len => ActiveMode == RenderMode.OpusDecoded ? _codec.DecodeLost() : new short[len];
     }
 
     /// <summary>启动 UDP 接收并开启渲染器。同进程可重复调用 (Stop→Start)。</summary>

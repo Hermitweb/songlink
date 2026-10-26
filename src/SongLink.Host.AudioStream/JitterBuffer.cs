@@ -28,8 +28,15 @@ public sealed class JitterBuffer
     /// <summary>单次空洞最多补几帧静音（防停流很久后回来爆一段静音）。</summary>
     public int MaxSilencePerGap { get; }
 
-    /// <summary>已插入的静音帧计数（指标，暴露给 metrics）。</summary>
+    /// <summary>已插入的补帧计数（静音或 PLC 掩盖帧，指标，暴露给 metrics）。</summary>
     public long SilenceFrames { get; private set; }
+
+    /// <summary>
+    /// 丢帧填充工厂：缺口超时补帧时调用，入参为帧的 short 长度。
+    /// null（默认）= 补死静音；设为 <c>OpusCodec.DecodeLost</c> 则走 Opus PLC
+    /// （丢包掩盖，听感比一段死静音好得多）。工厂抛异常时回退静音，不破坏时间轴。
+    /// </summary>
+    public Func<int, short[]>? LossFrameFactory { get; set; }
 
     private readonly Dictionary<byte, short[]> _window = new();
     private readonly object _lock = new();
@@ -137,13 +144,23 @@ public sealed class JitterBuffer
 
             if (gap > 0)
             {
-                // 深缺口或已超时：补静音推进（静音帧长度 = 最近收到的帧长）
+                // 深缺口或已超时：补帧推进（走 PLC 工厂或死静音；长度 = 最近帧长）
                 var fill = Math.Min(gap, MaxSilencePerGap);
                 SilenceFrames += fill;
                 for (var i = 0; i < fill; i++)
                     _expected = (byte)(_expected + 1);
+                short[] lost;
+                if (LossFrameFactory is { } factory)
+                {
+                    try { lost = factory(_frameLen); }
+                    catch { lost = new short[_frameLen]; }   // PLC 失败回退静音
+                }
+                else
+                {
+                    lost = new short[_frameLen];
+                }
                 // 若补完还差着缺口里的最早帧，把它留在窗口，下一次循环再接
-                return (true, new short[_frameLen], true);
+                return (true, lost, true);
             }
 
             // 完全空窗（流停了）：不补、不推进，等下一包

@@ -412,6 +412,31 @@ public class AudioStreamSinkTests
         Assert.Equal(firstLocal, sink.LocalPort);
     }
 
+    /// <summary>
+    /// 丢包 PLC（DecodeLost）：正常解码几帧后，用空包 + fec 解码应产出
+    /// "整帧、非零、幅度受控"的掩盖音频（已实测 Concentus：输出自然衰减，
+    /// 不是死零也不是爆音）；PCM 直通模式没有这个语义，不调用。
+    /// </summary>
+    [Fact]
+    public void DecodeLost_after_decoded_frames_returns_concealed_pcm()
+    {
+        using var codec = new OpusCodec(sampleRate: 48_000, channels: 1, bitrateBps: 128_000, frameMs: 20);
+        var pcm = new short[codec.PcmSamplesPerFrame];
+        for (int i = 0; i < pcm.Length; i++)
+            pcm[i] = (short)(Math.Sin(2 * Math.PI * 440.0 * i / 48_000.0) * 20_000);
+        var opus = codec.Encode(pcm);
+        var decoded = codec.Decode(opus);
+        Assert.Equal(codec.PcmSamplesPerFrame, decoded.Length);
+
+        // 解码器状态已有上下文 → 丢包掩盖帧应产出整帧、非死零的音频
+        var lost = codec.DecodeLost();
+        Assert.Equal(codec.PcmSamplesPerFrame, lost.Length);
+        Assert.True(lost.Any(s => s != 0), "PLC 掩盖帧不应整帧死零");
+        long absSum = 0;
+        foreach (var s in lost) absSum += Math.Abs((long)s);
+        Assert.True(absSum > 0, $"PLC 掩盖帧能量应为正，实际 absSum={absSum}");
+    }
+
     /// <summary>Dispose() 后再次 Start() 应能干净启 (同进程内重连 — audio:start 重新触发场景)。</summary>
     [Fact]
     public async Task Sink_can_restart_after_Dispose()

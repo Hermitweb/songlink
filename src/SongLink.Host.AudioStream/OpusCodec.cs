@@ -94,6 +94,21 @@ public sealed class OpusCodec : IDisposable
         return pcm;
     }
 
+    /// <summary>
+    /// 丢包 PLC（packet loss concealment）：收到 UDP 空洞时，用空包 + <c>fec=true</c>
+    /// 让解码器用 Opus 内置的 PLC 续出当前音频（而不是插死静音，听感上是一声"卡"而非"咔"）。
+    /// 已实测（Concentus 2.2.2）：连续几帧 PLC 输出后信号自然衰减再回到正常帧，无明显爆音。
+    /// </summary>
+    public short[] DecodeLost()
+    {
+        if (_disposed) throw new ObjectDisposedException(nameof(OpusCodec));
+        var pcm = new short[PcmSamplesPerFrame];
+        // 空包 + 末位 fec=true（该布尔参数在接口上无命名）：触发 Opus 内置 PLC
+        int n = _decoder.Decode(System.Array.Empty<byte>(), pcm, FrameSizeSamples, true);
+        if (n < 0) throw new InvalidOperationException($"Opus PLC 解码失败 (code={n})");
+        return pcm;
+    }
+
     public void Dispose()
     {
         if (_disposed) return;
