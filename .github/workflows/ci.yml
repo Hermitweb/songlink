@@ -118,7 +118,9 @@ jobs:
       if: always()
       with:
         name: android-test-results
-        path: mobile/android-remote/app/build/reports/tests/**/*.xml
+        # Gradle 的 JUnit XML 结果在 build/test-results/（build/reports/ 下是 HTML）。
+        # 之前指向 reports/ 导致每次都 "No files were found"。
+        path: mobile/android-remote/app/build/test-results/**/*.xml
         retention-days: 14
 
   # ==========================================================================

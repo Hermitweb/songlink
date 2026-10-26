@@ -4,9 +4,11 @@ WORKDIR /src
 
 # Copy project files and restore dependencies
 COPY src/SongLink.Host.Core/*.csproj ./
-# EnableWindowsTargeting 在 restore 阶段同样必须：本工程是 net8.0-windows，
-# Linux 上 restore 不带这个开关就会报 NETSDK1100（CI 的 docker job 曾因此挂掉）
-RUN dotnet restore -o /app/dependencies -p:EnableWindowsTargeting=true
+# 两点：
+#   1. restore 不支持 -o/--output（那是 build/publish 的开关，restore 用了会报
+#      MSB1001 Unknown switch，CI 的 docker job 曾因此挂掉）；缓存包目录用 --packages。
+#   2. EnableWindowsTargeting 在 Linux 上构建 net8.0-windows 目标是必须的。
+RUN dotnet restore --packages /app/dependencies -p:EnableWindowsTargeting=true
 
 # Copy source code and publish
 COPY src/SongLink.Host.Core/ .

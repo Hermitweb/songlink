@@ -37,20 +37,32 @@ var desc = AppDescriptor.LoadFile(descPath);
 var picker = new CoordinateMusicPicker(desc);
 var session = new SmtcAdapter { TargetAppId = desc.MediaSessionAppId ?? "QQMusic.exe" };
 
-var platform = new QqMusicPlatform
+// 按 descriptor 的 appId 选平台：坐标点歌与 SMTC 校验是共用的，
+// 差的只是"搜索来源 + 播放校验等待"的平台细节。
+IMusicPlatform platform = desc.AppId switch
 {
-    Picker = picker,
-    Probe = session,
-    Control = session,
-    VerifyTimeoutMs = 12000,
+    "kugou" => new KugouPlatform
+    {
+        Picker = picker,
+        Probe = session,
+        Control = session,
+        VerifyTimeoutMs = 12000,
+    },
+    _ => new QqMusicPlatform
+    {
+        Picker = picker,
+        Probe = session,
+        Control = session,
+        VerifyTimeoutMs = 12000,
+    },
 };
 
 var item = new SearchResultItem
 {
     Title = title,
     Artist = artist,
-    Source = "qq",
-    SourceId = desc.MediaSessionAppId is null ? "0" : "0",   // 点歌只用到歌名歌手
+    Source = desc.AppId,
+    SourceId = "0",   // 坐标点歌只用到歌名/歌手，SourceId 不参与
 };
 
 Console.WriteLine($"描述符: {descPath}");
