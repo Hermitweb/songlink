@@ -48,6 +48,20 @@ IMusicPlatform platform = desc.AppId switch
         Control = session,
         VerifyTimeoutMs = 12000,
     },
+    "kuwo" => new KuwoPlatform
+    {
+        Picker = picker,
+        Probe = session,
+        Control = session,
+        VerifyTimeoutMs = 12000,
+    },
+    "qishui" => new QishuiPlatform
+    {
+        Picker = picker,
+        Probe = session,
+        Control = session,
+        VerifyTimeoutMs = 12000,
+    },
     _ => new QqMusicPlatform
     {
         Picker = picker,

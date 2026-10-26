@@ -18,6 +18,9 @@ public enum PlatformCapability
 
     /// <summary>能搜到歌，也能真的让它响起来（点完会校验"确实在放"）。</summary>
     SearchAndPlay = 2,
+
+    /// <summary>只能点（客户端界面自动化），没有可用的在线搜索源。</summary>
+    PlayOnly = 3,
 }
 
 /// <summary>一次播放尝试的结果。失败时必须带出**具体**原因，不允许"失败了"三个字了事。</summary>

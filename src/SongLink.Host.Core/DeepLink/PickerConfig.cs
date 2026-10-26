@@ -154,6 +154,22 @@ public static class PlatformConfigLoader
                             PlayTemplate = p.PlayTemplate,
                         });
                         break;
+                    case "kuwo":
+                        result.Add(new KuwoPlatform
+                        {
+                            Picker = picker,
+                            Probe = probe,
+                            Control = control,
+                        });
+                        break;
+                    case "qishui":
+                        result.Add(new QishuiPlatform
+                        {
+                            Picker = picker,
+                            Probe = probe,
+                            Control = control,
+                        });
+                        break;
                     case "":
                         // 空 kind 已经在循环开头 continue 掉了，走不到这里 —— 保留分支只为防御
                         break;

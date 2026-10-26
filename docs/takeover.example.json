@@ -7,7 +7,9 @@
     "netease 网易云(深链接)：搜索 ✅ 通；点歌 ❌ 深链接实测**不切歌**（下发无报错，静默失效），已默认关闭该路径。",
     "netease-cdp 网易云(接管)：✅ **实测完全可用** —— 走客户端自己的 CDP 控制通道，点歌后当前曲目切到目标歌**并且真的起播**。需客户端带 --remote-debugging-port=9223 启动（点歌台可代为启动；客户端已在运行需先关闭）。已知的唯一失败原因是**版权**：客户端能接受切歌但拿不到播放授权时状态停在 Stop，此时会如实报失败并提示可能没有版权。",
     "qq     QQ音乐：搜索 ✅ 通（联想搜索，免登录）；点歌 ✅ **实测可用** —— 走「客户端界面点歌」：驱动 QQ音乐 自己的搜索框（聚焦→粘贴歌名→回车→点搜索结果），并用系统媒体会话确认真的在放这首歌。",
-    "kugou  酷狗：搜索 ✅ 通（免登录）；点歌 ⚠️ 本机客户端 20.1.32 **不支持**社区那套 workbuddy 控制桥（整个安装目录字节级搜索该协议零命中，需客户端 ≥ 20.1.40），且未做坐标标定 → 只能搜索、不能点歌。你自己验证过 kugou:// 格式的话可以填 playTemplate。"
+    "kugou  酷狗：搜索 ✅ 通（免登录）；点歌 ⚠️ 本机客户端 20.1.32 **不支持**社区那套 workbuddy 控制桥（整个安装目录字节级搜索该协议零命中，需客户端 ≥ 20.1.40），且未做坐标标定 → 只能搜索、不能点歌。你自己验证过 kugou:// 格式的话可以填 playTemplate。",
+    "kuwo   酷我：搜索 ⚠️ 未内置 —— 公开搜索接口要 Secret+Cookie 签名流（会过期），暂不可用；点歌 走「客户端界面点歌」(clientUiPick)，需先装客户端 + 标定 descriptors/kuwo.json。",
+    "qishui 汽水：搜索 ⚠️ 无稳定免登录公开接口（主要移动端，桌面版未确证）；点歌 走「客户端界面点歌」，需先装客户端 + 标定 descriptors/qishui.json + 确证其 SMTC 会话 AppId。"
   ],
 
   "_QQ音乐搜索说明": "实测 c.y.qq.com/soso/fcgi-bin/client_search_cp 已失效(HTTP 500)、u.y.qq.com/cgi-bin/musicu.fcg 无登录态返回 code 500003、网页版搜索页是纯前端渲染抓不到数据。改用 c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg（联想搜索，免登录，实测可用），再用 c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?songmid=… 补时长/专辑/会员标记。",
@@ -22,6 +24,8 @@
     { "kind": "netease", "enabled": true },
     { "kind": "netease-cdp", "enabled": true },
     { "kind": "qq", "enabled": true, "clientUiPick": true },
-    { "kind": "kugou", "enabled": true, "clientUiPick": false, "playTemplate": null }
+    { "kind": "kugou", "enabled": true, "clientUiPick": false, "playTemplate": null },
+    { "kind": "kuwo", "enabled": true, "clientUiPick": false },
+    { "kind": "qishui", "enabled": true, "clientUiPick": false }
   ]
 }

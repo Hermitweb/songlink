@@ -7,6 +7,10 @@
   "exeNames": ["kuwomusic", "KwPlayer"],
   "windowTitleRegex": "酷我音乐",
   "launchPath": null,
+  // 该客户端在系统媒体会话里的 AppId（用于"点完确认真的在放"校验）。
+  // 未确证——装上后用 spike/smtc-probe 看 GetSessions() 的 SourceAppUserModelId
+  // 填这里。没填则坐标点歌"点了但没法确认真在播"，会如实报失败。
+  "mediaSessionAppId": null,
   "searchBoxAutomationId": null,
   "searchBoxName": null,
   "submitKey": "Enter",

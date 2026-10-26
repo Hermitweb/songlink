@@ -480,6 +480,223 @@ public sealed class KugouPlatform : IMusicPlatform
 }
 
 // =============================================================================
+// 酷我音乐 / 汽水音乐
+//
+//   设计原则（与 QQ音乐/酷狗 保持一致）：**不猜**。
+//   · 酷我：桌面客户端会注册系统媒体会话（可用于"真在播"校验），但它的公开搜索
+//     接口需要 `Secret` 头 + 一套会过期的 Cookie 签名流（本机 2026-10-26 实测返回
+//     "The request is illegal!"）——按仓库一贯的"非官方接口随时失效"原则，不内置
+//     一条随时会挂的搜索。搜索这里如实返回空并给出原因；**点歌**走通用的坐标
+//     界面自动化（IMusicPicker），与 QQ/酷狗同一套，标定好 descriptors/kuwo.json
+//     后即可用。
+//   · 汽水：主要是移动端，未确证 Windows 桌面版注册媒体会话。点歌同样走坐标
+//     界面自动化；没有可用的 SMTC 会话时探针为 null，会如实报"无法校验真在播"。
+// =============================================================================
+
+/// <summary>
+/// 酷我音乐。点歌走坐标界面自动化（<see cref="Picker"/>）+ 系统媒体会话校验
+/// （<see cref="Probe"/>）；搜索未接入免登录源，如实返回空。
+/// </summary>
+public sealed class KuwoPlatform : IMusicPlatform
+{
+    public string Kind => "kuwo";
+    public string Name => "酷我音乐";
+
+    /// <summary>在客户端里点歌的执行器（界面自动化，坐标驱动）。</summary>
+    public IMusicPicker? Picker { get; init; }
+
+    /// <summary>播放校验器：点完用它确认"客户端真的在放这首歌"。</summary>
+    public IPlaybackProbe? Probe { get; init; }
+
+    /// <summary>传输控制：切歌后客户端是暂停的，靠它补一次"播放"。</summary>
+    public IPlaybackControl? Control { get; init; }
+
+    /// <summary>点歌后等待客户端起播的最长时间（毫秒）。</summary>
+    public int VerifyTimeoutMs { get; init; } = 8000;
+
+    /// <summary>
+    /// 没有免登录搜索源时如实降级为"仅点歌"。一旦日后接入可用搜索源，
+    /// 把 <see cref="SearchProvider"/> 提供出去即自动升级为 SearchAndPlay。
+    /// </summary>
+    public Func<string, int, CancellationToken, Task<IReadOnlyList<SearchResultItem>>>? SearchProvider { get; init; }
+
+    public PlatformCapability Capability
+    {
+        get
+        {
+            var canPlay = Picker is not null;
+            if (canPlay && SearchProvider is not null) return PlatformCapability.SearchAndPlay;
+            if (SearchProvider is not null) return PlatformCapability.SearchOnly;
+            if (canPlay) return PlatformCapability.PlayOnly;
+            return PlatformCapability.None;
+        }
+    }
+
+    public string? LastFailureReason { get; private set; }
+
+    public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(string keyword, int limit, CancellationToken ct = default)
+    {
+        if (SearchProvider is null)
+        {
+            LastFailureReason =
+                "酷我音乐的公开搜索接口需要 Secret+Cookie 签名流（会过期），" +
+                "本轮未内置——搜索暂不可用。点歌走客户端界面自动化（需先标定 descriptors/kuwo.json）。";
+            return Array.Empty<SearchResultItem>();
+        }
+        return await SearchProvider(keyword, limit, ct);
+    }
+
+    public async Task<bool> PlayAsync(SearchResultItem item, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(item.Title))
+        {
+            LastFailureReason = "搜索结果缺少歌名，酷我点歌失败";
+            return false;
+        }
+        if (Picker is null)
+        {
+            LastFailureReason =
+                "酷我音乐 只配置了搜索（或什么都没有），没有可用的点歌通道。" +
+                "需要开启「客户端界面点歌」并完成坐标标定（descriptors/kuwo.json）才能点歌。";
+            return false;
+        }
+
+        PickOutcome outcome;
+        try
+        {
+            outcome = await Picker.PickAsync(item.Title, item.Artist, Probe, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LastFailureReason = $"酷我 点歌失败：{ex.Message}";
+            return false;
+        }
+
+        if (!outcome.Ok)
+        {
+            LastFailureReason = outcome.Detail ?? "酷我 点歌失败";
+            return false;
+        }
+
+        var verified = await PlaybackVerifier.WaitForPlayingAsync(
+            Probe, item.Title, item.Artist, VerifyTimeoutMs, ct, Control);
+        if (verified.Ok)
+        {
+            LastFailureReason = null;
+            return true;
+        }
+
+        LastFailureReason = $"已点击《{item.Title}》，但客户端没有在放这首歌（{verified.Detail}）。可能是没有版权或被拦截。";
+        return false;
+    }
+}
+
+/// <summary>
+/// 汽水音乐（ByteDance）。点歌走坐标界面自动化（<see cref="Picker"/>）；
+/// 未确证 Windows 桌面版注册系统媒体会话，探针为 null 时如实报"无法校验真在播"。
+/// 搜索与 <see cref="KuwoPlatform"/> 同一原则：未接入免登录源，如实返回空。
+/// </summary>
+public sealed class QishuiPlatform : IMusicPlatform
+{
+    public string Kind => "qishui";
+    public string Name => "汽水音乐";
+
+    /// <summary>在客户端里点歌的执行器（界面自动化，坐标驱动）。</summary>
+    public IMusicPicker? Picker { get; init; }
+
+    /// <summary>播放校验器；Windows 桌面版未注册媒体会话时为 null。</summary>
+    public IPlaybackProbe? Probe { get; init; }
+
+    /// <summary>传输控制（可选）。</summary>
+    public IPlaybackControl? Control { get; init; }
+
+    /// <summary>点歌后等待客户端起播的最长时间（毫秒）。</summary>
+    public int VerifyTimeoutMs { get; init; } = 8000;
+
+    /// <summary>预留的免登录搜索源（当前未接入，保持 null）。</summary>
+    public Func<string, int, CancellationToken, Task<IReadOnlyList<SearchResultItem>>>? SearchProvider { get; init; }
+
+    public PlatformCapability Capability
+    {
+        get
+        {
+            var canPlay = Picker is not null;
+            if (canPlay && SearchProvider is not null) return PlatformCapability.SearchAndPlay;
+            if (SearchProvider is not null) return PlatformCapability.SearchOnly;
+            if (canPlay) return PlatformCapability.PlayOnly;
+            return PlatformCapability.None;
+        }
+    }
+
+    public string? LastFailureReason { get; private set; }
+
+    public async Task<IReadOnlyList<SearchResultItem>> SearchAsync(string keyword, int limit, CancellationToken ct = default)
+    {
+        if (SearchProvider is null)
+        {
+            LastFailureReason =
+                "汽水音乐的搜索没有稳定的免登录公开接口（主要是移动端，桌面版未确证）——" +
+                "搜索暂不可用。点歌走客户端界面自动化（需先标定 descriptors/qishui.json）。";
+            return Array.Empty<SearchResultItem>();
+        }
+        return await SearchProvider(keyword, limit, ct);
+    }
+
+    public async Task<bool> PlayAsync(SearchResultItem item, CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(item.Title))
+        {
+            LastFailureReason = "搜索结果缺少歌名，汽水音乐点歌失败";
+            return false;
+        }
+        if (Picker is null)
+        {
+            LastFailureReason =
+                "汽水音乐 只配置了搜索（或什么都没有），没有可用的点歌通道。" +
+                "需要开启「客户端界面点歌」并完成坐标标定（descriptors/qishui.json）才能点歌。";
+            return false;
+        }
+
+        PickOutcome outcome;
+        try
+        {
+            outcome = await Picker.PickAsync(item.Title, item.Artist, Probe, ct);
+        }
+        catch (OperationCanceledException) { throw; }
+        catch (Exception ex)
+        {
+            LastFailureReason = $"汽水音乐 点歌失败：{ex.Message}";
+            return false;
+        }
+
+        if (!outcome.Ok)
+        {
+            LastFailureReason = outcome.Detail ?? "汽水音乐 点歌失败";
+            return false;
+        }
+
+        // 没有探针时坐标点歌"点了但没法确认真在播"——如实上报
+        if (Probe is null)
+        {
+            LastFailureReason = "汽水音乐 点歌通道没有可用的播放校验（桌面版未注册系统媒体会话），已点击但无法确认真在放。";
+            return false;
+        }
+
+        var verified = await PlaybackVerifier.WaitForPlayingAsync(
+            Probe, item.Title, item.Artist, VerifyTimeoutMs, ct, Control);
+        if (verified.Ok)
+        {
+            LastFailureReason = null;
+            return true;
+        }
+
+        LastFailureReason = $"已点击《{item.Title}》，但客户端没有在放这首歌（{verified.Detail}）。";
+        return false;
+    }
+}
+
+// =============================================================================
 // 深链接安全启动器
 // =============================================================================
 /// <summary>

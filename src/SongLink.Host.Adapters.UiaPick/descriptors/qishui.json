@@ -7,6 +7,11 @@
   "exeNames": ["qsmusic", "QishuiMusic"],
   "windowTitleRegex": "汽水音乐",
   "launchPath": null,
+  // 该客户端在系统媒体会话里的 AppId（用于"点完确认真的在放"校验）。
+  // 未确证——汽水主要是移动端，Windows 桌面版是否注册 SMTC 会话待真机探测。
+  // 装上后用 `dotnet run --project tools/SongLink.Tools.PickE2E` 或 spike/smtc-probe 看
+  // GetSessions() 的 SourceAppUserModelId，确证后填这里，校验才生效。
+  "mediaSessionAppId": null,
   "searchBoxAutomationId": null,
   "searchBoxName": null,
   "submitKey": "Enter",

@@ -217,6 +217,95 @@ public class MusicPlatformTests
         Assert.True(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", SourceId = "ABC123" }));
     }
 
+    // ------------------------------------------------------------ 酷我
+
+    [Fact]
+    public async Task Kuwo_no_search_provider_reports_honestly_and_is_play_only()
+    {
+        var p = new KuwoPlatform();
+        var items = await p.SearchAsync("晴天 周杰伦", 10);
+        Assert.Empty(items);
+        Assert.Contains("搜索", p.LastFailureReason!);
+        Assert.Equal(PlatformCapability.None, p.Capability);   // 无 Picker 也无搜索源
+    }
+
+    [Fact]
+    public async Task Kuwo_play_without_picker_reports_why()
+    {
+        var p = new KuwoPlatform { SearchProvider = _kuwoSearchProvider };
+        Assert.Equal(PlatformCapability.SearchOnly, p.Capability);
+        Assert.False(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", Source = "kuwo" }));
+        Assert.Contains("没有可用的点歌通道", p.LastFailureReason!);
+    }
+
+    [Fact]
+    public async Task Kuwo_play_works_with_picker_and_verified_playback()
+    {
+        var picker = new FakePicker(PickOutcome.Started());
+        var probe = new FakeProbe(new PlaybackSnapshot("晴天", "周杰伦", "playing", "kuwo"));
+        var p = new KuwoPlatform { Picker = picker, Probe = probe, SearchProvider = _kuwoSearchProvider };
+
+        Assert.True(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", Source = "kuwo" }));
+        Assert.Equal("晴天 周杰伦", picker.LastQuery);
+        Assert.Equal(PlatformCapability.SearchAndPlay, p.Capability);
+    }
+
+    [Fact]
+    public async Task Kuwo_search_uses_injected_provider()
+    {
+        var p = new KuwoPlatform { SearchProvider = _kuwoSearchProvider };
+        var items = await p.SearchAsync("晴天", 5);
+        Assert.NotEmpty(items);
+        Assert.Equal("kuwo", items[0].Source);
+    }
+
+    private static Task<IReadOnlyList<SearchResultItem>> _kuwoSearchProvider(string kw, int limit, CancellationToken ct = default) =>
+        Task.FromResult<IReadOnlyList<SearchResultItem>>(
+            new List<SearchResultItem> { new() { Title = "晴天", Artist = "周杰伦", Source = "kuwo", SourceId = "rid-1" } });
+
+    // ------------------------------------------------------------ 汽水
+
+    [Fact]
+    public async Task Qishui_no_search_provider_reports_honestly_and_is_play_only()
+    {
+        var p = new QishuiPlatform();
+        var items = await p.SearchAsync("晴天 周杰伦", 10);
+        Assert.Empty(items);
+        Assert.Contains("搜索", p.LastFailureReason!);
+        Assert.Equal(PlatformCapability.None, p.Capability);
+    }
+
+    [Fact]
+    public async Task Qishui_play_without_picker_reports_why()
+    {
+        var p = new QishuiPlatform();
+        Assert.False(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", Source = "qishui" }));
+        Assert.Contains("没有可用的点歌通道", p.LastFailureReason!);
+    }
+
+    [Fact]
+    public async Task Qishui_play_with_picker_but_no_probe_reports_cannot_verify()
+    {
+        // 汽水桌面版未确证注册 SMTC 会话 → 探针为 null；点了但没法确认真在播，必须如实报
+        var picker = new FakePicker(PickOutcome.Started());
+        var p = new QishuiPlatform { Picker = picker, Probe = null };
+
+        Assert.False(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", Source = "qishui" }));
+        Assert.Contains("无法确认", p.LastFailureReason!);
+        Assert.Equal(PlatformCapability.PlayOnly, p.Capability);
+    }
+
+    [Fact]
+    public async Task Qishui_play_succeeds_with_picker_and_verified_playback()
+    {
+        var picker = new FakePicker(PickOutcome.Started());
+        var probe = new FakeProbe(new PlaybackSnapshot("晴天", "周杰伦", "playing", "qishui"));
+        var p = new QishuiPlatform { Picker = picker, Probe = probe };
+
+        Assert.True(await p.PlayAsync(new SearchResultItem { Title = "晴天", Artist = "周杰伦", Source = "qishui" }));
+        Assert.Equal(PlatformCapability.PlayOnly, p.Capability);   // 能点、没搜索源
+    }
+
     // ------------------------------------------------------------ 解析健壮性
 
     [Theory]
