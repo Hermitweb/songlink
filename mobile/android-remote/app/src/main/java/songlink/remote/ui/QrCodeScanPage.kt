@@ -1,6 +1,8 @@
 package songlink.remote.ui
 
+import android.graphics.BitmapFactory
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -72,6 +74,30 @@ fun QrCodeScanPage(
         }
     }
 
+    // 从相册选一张二维码图片（相机不可用 / 截图保存的场景）：走系统 SAF 选择器，
+    // 本地图片解码，不需要任何存储权限（Android 10+ GetContent 不走 MANAGE_EXTERNAL_STORAGE）。
+    // 复用 [decodeQRCode] + [parseQrData]，与摄像头路径走同一个解析管线。
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val albumLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        val bitmap = try {
+            context.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it) }
+        } catch (e: Exception) { null }
+        val result = decodeQRCode(bitmap)
+        if (result != null) {
+            val qrData = parseQrData(result.text)
+            if (qrData != null) {
+                error = null
+                onScanSuccess(qrData.host, qrData.pin)
+            } else {
+                error = "二维码内容不是有效的连接信息"
+            }
+        } else {
+            error = "图片里没识别到二维码（试试更清晰 / 更大的截图）"
+        }
+    }
     // 权限授予后自动开始扫描
     LaunchedEffect(cameraPermission.status.isGranted) {
         if (cameraPermission.status.isGranted && !autoLaunched) {
@@ -169,6 +195,13 @@ fun QrCodeScanPage(
 
             Button(onClick = { scanLauncher.launch(scanOptions) }) {
                 Text("开始扫码")
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // 相机不可用 / 二维码在电脑屏幕上（截图保存进相册）时的替代路径。
+            ElevatedButton(onClick = { albumLauncher.launch("image/*") }) {
+                Text("或从相册选择二维码图片")
             }
 
             // Error display
