@@ -61,6 +61,10 @@ class AudioTransportManager @Inject constructor(
     fun startAudioCapture(host: String, port: Int, callback: (Boolean, String?) -> Unit) {
         remoteHost = host
         remotePort = port
+        // 真正发包的是 capturer（它用自己的 remoteHost/remotePort 字段组 datagram 目标）。
+        // 只写本类字段的话，帧会发往 capturer 默认值 127.0.0.1 —— 真机实测 PC 侧 0 收包。
+        capturer.remoteHost = host
+        capturer.remotePort = port
         scope.launch {
             try {
                 capturer.startCapture(port) { ok, err ->

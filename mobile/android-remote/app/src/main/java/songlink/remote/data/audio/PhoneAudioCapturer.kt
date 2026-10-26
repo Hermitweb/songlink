@@ -102,6 +102,7 @@ class PhoneAudioCapturer(private val applicationContext: android.content.Context
                     onResult(false, "NEED_PROJECTION: UI 需先 MediaProjection 授权再启动")
                     return@launch
                 }
+                Log.i(TAG, "startCapture target=$remoteHost:$remotePort useOpus=$useOpus")
 
                 record = if (useCaptureApi) {
                     AudioRecord.Builder()

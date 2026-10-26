@@ -77,7 +77,6 @@ class ProjectionService : Service() {
         }
     }
 
-    @Inject lateinit var capturer: PhoneAudioCapturer
     @Inject lateinit var transport: AudioTransportManager
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -117,25 +116,41 @@ class ProjectionService : Service() {
         // 前台通知 (Android 14+: 必须显式声明 foregroundServiceType=mediaProjection)
         startForegroundCompat()
 
+        val data = projectionData
+        Log.i(TAG, "BIND code=$projectionCode dataNull=${data == null} started=$started host=$host:$port")
+
+        // 只判 data：系统 MediaProjection 授权成功时回调的 resultCode 就是
+        // Activity.RESULT_OK，其字面值是 -1；getMediaProjection(-1, data) 是合法调用。
+        // 曾经写成 `projectionCode < 0 || data == null`，把每次正常授权都当成无效，
+        // token 永远喂不进 capturer → 真机 0 收包。
+        if (data == null) {
+            Log.w(TAG, "no result data; capturing not possible (retry allowed)")
+            return
+        }
+
         if (started) {
-            Log.w(TAG, "already started; ignoring duplicate BIND")
+            // 已经在推流：只重绑 token（用户可能换了新的一次授权），不重开采集。
+            Log.i(TAG, "already started; re-binding MediaProjection token only")
+            scope.launch {
+                val mp = (application.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
+                        as android.media.projection.MediaProjectionManager)
+                    .getMediaProjection(projectionCode, data)
+                transport.bindMediaProjection(mp)
+                Log.i(TAG, "MediaProjection token re-bound to PhoneAudioCapturer")
+            }
             return
         }
         started = true
 
-        val data = projectionData
-        if (projectionCode < 0 || data == null) {
-            Log.w(TAG, "invalid MediaProjection extras; capturing not possible")
-            stopAndCleanup()
-            return
-        }
-
         scope.launch {
             // 1) 喂 MediaProjection token 到 capturer
+            //    经 [AudioTransportManager.bindMediaProjection] 走 Hilt 单例的 capturer，
+            //    不能再直接 @Inject 第二个 capturer 实例 —— 那样 token 喂给 A 实例、
+            //    推流却由 B 实例发，B 的 projection 永远为 null → NEED_PROJECTION 死循环。
             val mp = (application.getSystemService(Context.MEDIA_PROJECTION_SERVICE)
                     as android.media.projection.MediaProjectionManager)
                 .getMediaProjection(projectionCode, data)
-            capturer.captureProjection(mp)
+            transport.bindMediaProjection(mp)
             Log.i(TAG, "MediaProjection token bound to PhoneAudioCapturer")
 
             // 2) 启动 PCM 推流
@@ -158,7 +173,6 @@ class ProjectionService : Service() {
 
     private fun stopAndCleanup() {
         transport.stopAudioCapture()
-        capturer.stopCapture()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) stopForeground(STOP_FOREGROUND_REMOVE)
         else @Suppress("DEPRECATION") stopForeground(true)
     }
